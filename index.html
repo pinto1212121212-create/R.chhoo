@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>הנה"ח FINAL — אוריאל פינטו</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #0f1420; color: #e8e8e8; padding-bottom: 130px; }
+  header { padding: 14px 16px; background: #1a2130; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  h1 { font-size: 17px; color: #fff; }
+  .sub { font-size: 11px; color: #8b93a7; }
+  .tabs { display: flex; gap: 4px; margin-top: 10px; }
+  .tab { flex: 1; padding: 9px 2px; text-align: center; background: #232b3d; border-radius: 8px; font-size: 11.5px; cursor: pointer; border: none; color: #cbd2e0; position: relative; }
+  .tab.active { background: #ff7a00; color: #fff; font-weight: bold; }
+  .tab .bdg { position: absolute; top: -5px; left: -3px; background: #ff6b6b; color: #fff; font-size: 10px; min-width: 17px; height: 17px; line-height: 17px; border-radius: 9px; font-weight: bold; }
+  main { padding: 14px; }
+  .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
+  .kpi { flex: 1; background: #1a2130; border-radius: 10px; padding: 9px 4px; text-align: center; }
+  .kpi span { display: block; font-size: 10px; color: #8b93a7; }
+  .kpi b { font-size: 14px; color: #fff; }
+  .kpi.pos b { color: #4ade80; } .kpi.neg b { color: #ff6b6b; }
+  form, .panel { background: #1a2130; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: #8b93a7; margin: 8px 0 3px; }
+  input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #2a3145; background: #0f1420; color: #fff; font-size: 15px; }
+  .row2 { display: flex; gap: 8px; } .row2 > div { flex: 1; }
+  .btn { display: block; width: 100%; padding: 12px; background: #ff7a00; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; margin-top: 12px; cursor: pointer; }
+  .btn.sec { background: #232b3d; font-size: 13px; padding: 10px; margin-top: 8px; }
+  .quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
+  .qbtn { white-space: nowrap; padding: 8px 12px; background: #232b3d; border: 1px solid #3a4560; border-radius: 20px; color: #ffb366; font-size: 12px; cursor: pointer; }
+  .attach-zone { margin-top: 10px; padding: 10px; border: 1px dashed #3a4560; border-radius: 8px; text-align: center; font-size: 13px; color: #8b93a7; cursor: pointer; }
+  .attach-zone.has { border-color: #4ade80; color: #4ade80; }
+  .entry { background: #1a2130; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .entry-top { display: flex; justify-content: space-between; align-items: center; }
+  .entry .inf { font-size: 13px; flex: 1; }
+  .entry .inf b { display: block; font-size: 14px; color: #fff; }
+  .entry .inf span { color: #8b93a7; font-size: 11px; }
+  .entry .amt { font-weight: bold; font-size: 15px; white-space: nowrap; margin-right: 8px; }
+  .entry .amt.in { color: #4ade80; } .entry .amt.out { color: #ff6b6b; }
+  .entry-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .chip { flex: 1; padding: 7px; border-radius: 7px; border: none; background: #232b3d; color: #cbd2e0; font-size: 12px; cursor: pointer; }
+  .chip.green { color: #4ade80; } .chip.red { color: #ff6b6b; }
+  .alert { border-radius: 10px; padding: 12px; margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+  .alert b { display: block; margin-bottom: 2px; }
+  .alert.warn { background: #3a2416; border-right: 3px solid #ff9d3d; }
+  .alert.crit { background: #3a1616; border-right: 3px solid #ff6b6b; }
+  .alert.ok { background: #14351f; border-right: 3px solid #4ade80; }
+  .alert.info { background: #16243a; border-right: 3px solid #4dabf7; }
+  .alert .abtn { margin-top: 8px; padding: 7px 14px; background: #ff7a00; border: none; border-radius: 7px; color: #fff; font-size: 12px; font-weight: bold; cursor: pointer; }
+  .prog { height: 14px; background: #232b3d; border-radius: 7px; overflow: hidden; margin: 6px 0 3px; }
+  .prog i { display: block; height: 100%; background: linear-gradient(90deg, #4ade80, #ff9d3d, #ff6b6b); }
+  .cat-sum { background: #1a2130; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 13px; gap: 6px; flex-wrap: wrap; }
+  .taxrow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #232b3d; font-size: 13px; }
+  .taxrow:last-child { border: none; }
+  .taxrow b.big { font-size: 16px; color: #ff9d3d; }
+  .bracket { display: flex; justify-content: space-between; padding: 5px 8px; border-radius: 6px; font-size: 12px; margin-bottom: 3px; background: #0f1420; }
+  .bracket.cur { background: #3a2416; border: 1px solid #ff9d3d; font-weight: bold; }
+  .yearcard { background: #1a2130; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .yearcard h4 { font-size: 15px; color: #fff; display: flex; justify-content: space-between; }
+  .yearcard .st { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
+  .st.no { background: #3a1616; color: #ff6b6b; }
+  .st.mid { background: #3a2416; color: #ff9d3d; }
+  .st.yes { background: #14351f; color: #4ade80; }
+  .footer { position: fixed; bottom: 0; right: 0; left: 0; padding: 10px 14px; background: #1a2130; box-shadow: 0 -2px 10px rgba(0,0,0,.5); z-index: 20; }
+  .hidden { display: none !important; }
+  h3 { font-size: 14px; color: #ff9d3d; margin: 14px 0 8px; }
+  .msg { text-align: center; font-size: 12px; color: #8b93a7; padding: 14px; }
+  .status { font-size: 11px; color: #4ade80; text-align: center; margin-top: 5px; min-height: 13px; }
+  #viewer { position: fixed; inset: 0; background: rgba(0,0,0,.94); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  #viewer.hidden { display: none !important; }
+  #viewer img { max-width: 100%; max-height: 72vh; border-radius: 8px; }
+  #viewer .btn { max-width: 300px; }
+  .badge { display: inline-block; font-size: 10px; background: #14351f; color: #4ade80; border-radius: 5px; padding: 1px 6px; margin-right: 5px; }
+  .disc { font-size: 10.5px; color: #8b93a7; margin-top: 6px; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💼 הנה"ח FINAL — אוריאל פינטו</h1>
+  <div class="sub">עוסק פטור · מנוע מס 2026 · הסדרת שנים קודמות</div>
+  <div class="tabs">
+    <button class="tab active" id="tb-in" onclick="showTab('in',this)">הכנסות</button>
+    <button class="tab" id="tb-out" onclick="showTab('out',this)">הוצאות</button>
+    <button class="tab" id="tb-alerts" onclick="showTab('alerts',this)">🔔</button>
+    <button class="tab" id="tb-tax" onclick="showTab('tax',this)">🧮 מס</button>
+    <button class="tab" id="tb-docs" onclick="showTab('docs',this)">📄</button>
+    <button class="tab" id="tb-sum" onclick="showTab('sum',this)">סיכום</button>
+  </div>
+</header>
+
+<main>
+  <div class="kpis">
+    <div class="kpi pos"><span>הכנסות</span><b id="kIn">0 ₪</b></div>
+    <div class="kpi neg"><span>הוצאות</span><b id="kOut">0 ₪</b></div>
+    <div class="kpi"><span>רווח/הפסד</span><b id="kNet">0 ₪</b></div>
+    <div class="kpi"><span>אומדן מס</span><b id="kTax">0 ₪</b></div>
+  </div>
+
+  <div id="ai-box"></div>
+
+  <!-- הכנסות -->
+  <section id="tab-in">
+    <button class="btn" style="background:#7c5cff;margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה / אישור עם AI</button>
+    <div class="quick" id="quick-in"></div>
+    <form onsubmit="return addEntry('in')">
+      <div class="row2">
+        <div><label>תאריך</label><input type="date" id="in-date" required></div>
+        <div><label>סכום ₪</label><input type="number" step="0.01" id="in-amt" inputmode="decimal" required></div>
+      </div>
+      <div class="row2">
+        <div><label>או סכום $</label><input type="number" step="0.01" id="in-usd" inputmode="decimal" oninput="usdCalc('in')"></div>
+        <div><label>שער ₪/$</label><input type="number" step="0.001" id="in-rate" value="3.00" oninput="usdCalc('in')"></div>
+      </div>
+      <label>מקור</label>
+      <select id="in-cat">
+        <option>משיכה — MyFundedFutures</option>
+        <option>משיכה — TakeProfitTrader</option>
+        <option>משיכה — Topstep</option>
+        <option>לקוח — פיתוח ווב</option>
+        <option>אחר</option>
+      </select>
+      <label>הערה</label><input type="text" id="in-note" placeholder="למשל: משיכה, Riseworks">
+      <div class="attach-zone" id="in-az" onclick="document.getElementById('in-file').click()">📎 צרף קבלה / אישור</div>
+      <input type="file" id="in-file" accept="image/*" class="hidden" onchange="stageFile('in')">
+      <button class="btn" type="submit">➕ הוסף הכנסה</button>
+    </form>
+    <div id="list-in"></div>
+  </section>
+
+  <!-- הוצאות -->
+  <section id="tab-out" class="hidden">
+    <button class="btn" style="background:#7c5cff;margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה עם AI — מזהה סכום וקטגוריה לבד</button>
+    <div class="quick" id="quick-out"></div>
+    <form onsubmit="return addEntry('out')">
+      <div class="row2">
+        <div><label>תאריך</label><input type="date" id="out-date" required></div>
+        <div><label>סכום ₪</label><input type="number" step="0.01" id="out-amt" inputmode="decimal" required></div>
+      </div>
+      <div class="row2">
+        <div><label>או סכום $</label><input type="number" step="0.01" id="out-usd" inputmode="decimal" oninput="usdCalc('out')"></div>
+        <div><label>שער ₪/$</label><input type="number" step="0.001" id="out-rate" value="3.00" oninput="usdCalc('out')"></div>
+      </div>
+      <label>קטגוריה</label>
+      <select id="out-cat">
+        <option>פרופ-פירם — MFFU</option>
+        <option>פרופ-פירם — TakeProfitTrader</option>
+        <option>פרופ-פירם — Topstep</option>
+        <option>פרופ-פירם — Apex (היסטורי)</option>
+        <option>תוכנה — TradingView</option>
+        <option>תוכנה — TradersPost</option>
+        <option>תוכנה — שרתים / Colab / אחר</option>
+        <option>ציוד — טלפון / מחשב</option>
+        <option>עמלות בנק והמרות מט"ח</option>
+        <option>ריבית הלוואות</option>
+        <option>הנה"ח ורו"ח</option>
+        <option>אינטרנט וסלולר (חלק עסקי)</option>
+        <option>משרד ביתי — חשמל/ארנונה/שכ"ד (חלק יחסי)</option>
+        <option>AI וכלי עבודה (Claude, GitHub...)</option>
+        <option>פיתוח — Firebase / דומיינים / אחסון</option>
+        <option>השתלמויות וספרות מקצועית</option>
+        <option>נסיעות וחניה עסקית</option>
+        <option>שיווק ופרסום</option>
+        <option>אחר</option>
+      </select>
+      <label>הערה</label><input type="text" id="out-note" placeholder="למשל: מנוי חודשי $125.6">
+      <div class="attach-zone" id="out-az" onclick="document.getElementById('out-file').click()">📎 צרף קבלה</div>
+      <input type="file" id="out-file" accept="image/*" class="hidden" onchange="stageFile('out')">
+      <button class="btn" type="submit">➕ הוסף הוצאה</button>
+    </form>
+    <div id="list-out"></div>
+  </section>
+
+  <!-- התראות -->
+  <section id="tab-alerts" class="hidden">
+    <div id="alerts-list"></div>
+  </section>
+
+  <!-- מס -->
+  <section id="tab-tax" class="hidden">
+    <div class="panel">
+      <h3 style="margin-top:0">🧮 אומדן מס <span id="taxYearLbl"></span></h3>
+      <div id="taxCalc"></div>
+      <div id="zairCompare" style="margin-top:10px"></div>
+      <div class="disc">אומדן בלבד לפי מדרגות 2026 (רשות המסים). ההכנסה החייבת בפועל תלויה בהכרת ההוצאות, ניכויים (פנסיה, קה"ש) ונקודות זיכוי נוספות (ילדים, מילואים). המספר הסופי — אצל הרו"ח.</div>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">מדרגות מס 2026 (שנתי) — איפה אתה</h3>
+      <div id="brackets"></div>
+      <div class="disc">מס שולי = רק על השקלים שמעל הסף. עלייה במדרגה אף פעם לא מקטינה נטו.</div>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">⚙️ הגדרות חישוב</h3>
+      <div class="row2">
+        <div><label>ילדים עד גיל 5</label><input type="number" min="0" id="set-k05" onchange="saveSettings()"></div>
+        <div><label>ילדים 6–17</label><input type="number" min="0" id="set-k617" onchange="saveSettings()"></div>
+      </div>
+      <div class="row2">
+        <div><label>נקודות מילואים (לפי אישור ב"ל)</label><input type="number" step="0.25" min="0" id="set-milu" onchange="saveSettings()"></div>
+        <div><label>סה"כ נקודות זיכוי</label><input type="number" step="0.25" id="set-points" onchange="saveSettings()"></div>
+      </div>
+      <button type="button" class="btn sec" onclick="autoPoints()">🧮 חשב נקודות אוטומטית (בסיס + ילדים + מילואים)</button>
+      <div class="row2" style="margin-top:8px">
+        <div><label>לכלול ביטוח לאומי באומדן</label><select id="set-bl" onchange="saveSettings()"><option value="1">כן</option><option value="0">לא</option></select></div>
+        <div></div>
+      </div>
+      <div class="disc">חישוב אוטומטי (לאב): בסיס 2.25 + ילד עד 5 = 2.5 נק׳ + ילד 6–17 = 1 נק׳ + מילואים (מדרג 2026: עד 4 נק׳ = 11,616 ₪ ל-110+ ימי שירות). אומדן — הרו"ח מאשר סופית.</div>
+    </div>
+    <h3>📂 הסדרת שנים קודמות</h3>
+    <div id="pastYears"></div>
+  </section>
+
+  <!-- מסמכים -->
+  <section id="tab-docs" class="hidden">
+    <div class="panel" style="margin-bottom:10px">
+      <b style="color:#ff9d3d">📄 מסמכים לדוח השנתי</b>
+      <div class="disc">דוח 1301 מוגש משותף לבני הזוג — לכן נדרשים גם המסמכים של טל. לחץ על שורה כדי לסמן שהמסמך בידיים.</div>
+    </div>
+    <div id="docs-list"></div>
+    <div class="panel" style="margin-top:12px">
+      <b style="color:#ff9d3d">📤 העלאת מסמך נוסף (כל דבר שהרו"ח מבקש)</b>
+      <div class="row2" style="margin-top:6px">
+        <div><label>שנה</label><select id="xf-year"></select></div>
+        <div><label>שם המסמך</label><input type="text" id="xf-name" placeholder="למשל: אישור יתרות בנק"></div>
+      </div>
+      <button class="btn sec" onclick="uploadExtraFile()">📤 בחר קובץ והעלה (תמונה / PDF)</button>
+      <button class="btn" style="background:#7c5cff" onclick="aiScan()">🤖 זיהוי טופס אוטומטי עם AI</button>
+    </div>
+    <div id="extra-list"></div>
+  </section>
+
+  <!-- סיכום -->
+  <section id="tab-sum" class="hidden">
+    <h3>תקרת עוסק פטור 2026</h3>
+    <div class="cat-sum" style="display:block">
+      <div style="display:flex;justify-content:space-between"><span>מחזור השנה</span><b id="capTxt">0 / 122,833 ₪</b></div>
+      <div class="prog"><i id="capBar" style="width:0%"></i></div>
+      <span style="font-size:11px;color:#8b93a7">נמדד לפי תקבולים ברוטו, לא רווח</span>
+    </div>
+    <h3>לפי קטגוריה</h3>
+    <div id="sum-cat"></div>
+    <h3>לפי שנה</h3>
+    <div id="sum-year"></div>
+  </section>
+</main>
+
+<div class="footer">
+  <div class="row2">
+    <button class="btn" style="margin-top:0" onclick="exportXLSX()">📥 אקסל לרו"ח</button>
+    <button class="btn sec" style="margin-top:0" onclick="exportZip()">🗂️ קבלות ZIP</button>
+  </div>
+  <button class="btn" style="margin-top:8px;background:#4ade80;color:#0f1420" onclick="buildYearPackage()">📦 חבילה שנתית מלאה לרו"ח (דוח + קבלות + טפסים)</button>
+  <div class="status" id="status"></div>
+</div>
+
+<div id="viewer" class="hidden" onclick="closeViewer()">
+  <img id="viewer-img" src="">
+  <button class="btn" style="background:#ff6b6b" onclick="event.stopPropagation(); removeReceipt()">🗑️ מחק קבלה</button>
+  <button class="btn sec" onclick="closeViewer()">סגור</button>
+</div>
+
+<script>
+let data = { entries: [], settings: { points: 2.25, includeBL: true, k05: 0, k617: 0, milu: 0 }, yearStatus: {}, docs: {}, dismissed: {}, docFiles: {}, extraFiles: [] };
+let staged = { in: null, out: null };
+let viewing = null;
+const CAP = 122833;
+// מדרגות מס 2026 — שנתי (יגיעה אישית), רשות המסים
+const BRACKETS = [
+  { upTo: 84120,  rate: 0.10 },
+  { upTo: 120720, rate: 0.14 },
+  { upTo: 228000, rate: 0.20 },
+  { upTo: 301200, rate: 0.31 },
+  { upTo: 560280, rate: 0.35 },
+  { upTo: 721560, rate: 0.47 },
+  { upTo: Infinity, rate: 0.50 } // 47% + מס יסף 3%
+];
+const POINT_VALUE = 2904; // שווי נקודת זיכוי שנתי 2026
+// ביטוח לאומי + בריאות לעצמאי — אומדן: ~9.2% עד ~92,436 ₪ שנתי, ~23% מעל (עד תקרה)
+const BL_LOW_CAP = 92436, BL_LOW = 0.092, BL_HIGH = 0.23;
+
+const fmt = n => Math.round(n).toLocaleString('he-IL') + ' ₪';
+const escA = x => String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+const escH = x => String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const KEY = 'hh-uriel-v2';
+const RK = id => 'hh-rcpt-' + id;
+
+
+const DOCS = [
+  { g:'👫 משפחה ושכר (דוח משותף לבני הזוג)', items: [
+    { id:'106', t:'טופס 106 של טל', w:'מכל מעסיק בשנת המס. המעסיק מנפיק עד מרץ של השנה העוקבת' },
+    { id:'leida', t:'אישור דמי לידה — טל', w:'לידת ליבי 08/2026 — הכנסה חייבת. באתר האישי של ביטוח לאומי' },
+    { id:'milu', t:'אישור תגמולי מילואים — אוריאל', w:'הכנסה חייבת + בסיס לנקודות הזיכוי החדשות למילואים (2026)' },
+  ]},
+  { g:'💼 העסק', items: [
+    { id:'xls', t:'ריכוז הכנסות/הוצאות + קבלות', w:'מהאפליקציה: אקסל לרו"ח + ZIP קבלות' },
+    { id:'nik', t:'אישורי ניכוי מס במקור מלקוחות', w:'אם לקוחות הפיתוח ניכו מס — זה מס שכבר שולם ומתקזז' },
+    { id:'blz', t:'אישור שנתי ב"ל — דמי ביטוח ששולמו', w:'52% מדמי הביטוח מוכרים כניכוי' },
+    { id:'rise', t:'סיכום שנתי Riseworks / פרמות', w:'אסמכתא למקור ההכנסות מחו"ל' },
+  ]},
+  { g:'🏦 בנקים ופיננסים', items: [
+    { id:'867', t:'טופס 867 מהבנקים (פועלים + מזרחי)', w:'ריבית פיקדונות/ני"ע ומס שנוכה. הבנק מנפיק במרץ' },
+    { id:'crypto', t:'דוח שנתי Binance / קריפטו', w:'מימושים/המרות = רווח הון חייב דיווח. רק החזקה — אין אירוע מס' },
+    { id:'loan', t:'אישורי ריבית הלוואות', w:'לניכוי הריבית העסקית — אישור שנתי מהבנק' },
+  ]},
+  { g:'🎁 הטבות וזיכויים', items: [
+    { id:'pens', t:'אישורי הפקדה פנסיה / קרן השתלמות', w:'ניכוי וזיכוי מס (ואם אין — פנסיה לעצמאי היא גם חובה חוקית)' },
+    { id:'trum', t:'קבלות תרומות למוסד מוכר (סעיף 46)', w:'זיכוי 35% מהתרומה — לשמור קבלות (ועד הרבנים וכו׳)' },
+  ]},
+];
+function renderDocs() {
+  if (!data.docs) data.docs = {};
+  if (!data.docFiles) data.docFiles = {};
+  if (!data.extraFiles) data.extraFiles = [];
+  const total = DOCS.reduce((a,g)=>a+g.items.length,0);
+  const done = DOCS.reduce((a,g)=>a+g.items.filter(i=>data.docs[i.id]).length,0);
+  let html = `<div class="cat-sum" style="display:block">
+    <div style="display:flex;justify-content:space-between"><span>מסמכים מוכנים</span><b>${done} / ${total}</b></div>
+    <div class="prog"><i style="width:${total?done/total*100:0}%;background:#4ade80"></i></div>
+  </div>`;
+  DOCS.forEach(g => {
+    html += `<h3>${g.g}</h3>`;
+    g.items.forEach(i => {
+      const on = !!data.docs[i.id];
+      const hasFile = !!data.docFiles[i.id];
+      html += `<div class="entry">
+        <div class="entry-top" style="cursor:pointer" onclick="toggleDoc('${i.id}')">
+          <div class="inf"><b>${on?'✅':'⬜'} ${i.t} ${hasFile?'<span class="badge">📎 קובץ</span>':''}</b><span>${i.w}</span></div>
+        </div>
+        <div class="entry-actions">
+          ${hasFile
+            ? `<button class="chip green" onclick="viewStoredFile('hh-doc-${i.id}','${escA(i.t)}')">👁 מסמך</button><button class="chip" onclick="uploadDocFile('${i.id}')">🔄 החלף</button>`
+            : `<button class="chip" onclick="uploadDocFile('${i.id}')">📤 העלה טופס</button>`}
+        </div>
+      </div>`;
+    });
+  });
+  document.getElementById('docs-list').innerHTML = html;
+
+  // שנים לבחירת העלאה
+  const yNow = new Date().getFullYear();
+  const sel = document.getElementById('xf-year');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '';
+    for (let yy = yNow; yy >= yNow-3; yy--) sel.innerHTML += `<option>${yy}</option>`;
+    if (cur) sel.value = cur;
+  }
+  // רשימת מסמכים נוספים לפי שנה
+  const byY = {};
+  data.extraFiles.forEach(f => { (byY[f.year] = byY[f.year] || []).push(f); });
+  let xh = '';
+  Object.keys(byY).sort().reverse().forEach(yy => {
+    xh += `<h3>📁 מסמכים ${yy}</h3>`;
+    byY[yy].forEach(f => {
+      xh += `<div class="entry"><div class="entry-top">
+        <div class="inf"><b>${escH(f.name)}</b><span>שנת ${yy}</span></div></div>
+        <div class="entry-actions">
+          <button class="chip green" onclick="viewStoredFile('hh-file-${f.id}','${escA(f.name)}')">👁 צפה</button>
+          <button class="chip red" onclick="delExtraFile(${f.id})">🗑 מחק</button>
+        </div></div>`;
+    });
+  });
+  document.getElementById('extra-list').innerHTML = xh;
+}
+function dismissRec(id) {
+  if (!data.dismissed) data.dismissed = {};
+  data.dismissed[id] = true;
+  save(); render();
+}
+function toggleDoc(id) {
+  if (!data.docs) data.docs = {};
+  data.docs[id] = !data.docs[id];
+  save(); render();
+}
+
+async function load() {
+  try {
+    const r = await window.storage.get(KEY);
+    if (r && r.value) {
+      const saved = JSON.parse(r.value);
+      data.entries = saved.entries || [];
+      data.settings = Object.assign(data.settings, saved.settings || {});
+      data.yearStatus = saved.yearStatus || {};
+      data.docs = saved.docs || {};
+      data.dismissed = saved.dismissed || {};
+      data.docFiles = saved.docFiles || {};
+      data.extraFiles = saved.extraFiles || [];
+    }
+  } catch(e) {}
+  document.getElementById('set-points').value = data.settings.points;
+  document.getElementById('set-bl').value = data.settings.includeBL ? '1' : '0';
+  document.getElementById('set-k05').value = data.settings.k05 || 0;
+  document.getElementById('set-k617').value = data.settings.k617 || 0;
+  document.getElementById('set-milu').value = data.settings.milu || 0;
+  render();
+}
+async function save() {
+  try { await window.storage.set(KEY, JSON.stringify(data)); setStatus('✓ נשמר'); }
+  catch(e) { setStatus('⚠ שמירה זמנית בלבד'); }
+}
+function saveSettings() {
+  data.settings.points = parseFloat(document.getElementById('set-points').value) || 2.25;
+  data.settings.includeBL = document.getElementById('set-bl').value === '1';
+  data.settings.k05 = parseInt(document.getElementById('set-k05').value) || 0;
+  data.settings.k617 = parseInt(document.getElementById('set-k617').value) || 0;
+  data.settings.milu = parseFloat(document.getElementById('set-milu').value) || 0;
+  save(); render();
+}
+function autoPoints() {
+  const k05 = parseInt(document.getElementById('set-k05').value) || 0;
+  const k617 = parseInt(document.getElementById('set-k617').value) || 0;
+  const milu = parseFloat(document.getElementById('set-milu').value) || 0;
+  const pts = Math.round((2.25 + k05*2.5 + k617*1 + milu)*100)/100;
+  document.getElementById('set-points').value = pts;
+  saveSettings();
+  setStatus('✓ ' + pts + ' נקודות = ' + fmt(pts*2904) + ' זיכוי שנתי');
+}
+function setYearStatus(y, s) { data.yearStatus[y] = s; save(); render(); }
+function setStatus(t){ const s=document.getElementById('status'); s.textContent=t; setTimeout(()=>s.textContent='',2500); }
+
+function usdCalc(type) {
+  const usd = parseFloat(document.getElementById(type+'-usd').value);
+  const rate = parseFloat(document.getElementById(type+'-rate').value) || 3;
+  if (usd) {
+    document.getElementById(type+'-amt').value = (usd*rate).toFixed(2);
+    const noteEl = document.getElementById(type+'-note');
+    if (!noteEl.value || noteEl.value.startsWith('$')) noteEl.value = '$'+usd+' בשער '+rate;
+  }
+}
+
+/* ===== מנוע מס ===== */
+function calcIncomeTax(net) {
+  if (net <= 0) return 0;
+  let tax = 0, prev = 0;
+  for (const b of BRACKETS) {
+    const slice = Math.min(net, b.upTo) - prev;
+    if (slice > 0) tax += slice * b.rate;
+    if (net <= b.upTo) break;
+    prev = b.upTo;
+  }
+  return tax;
+}
+function calcBL(net) {
+  if (net <= 0) return 0;
+  const low = Math.min(net, BL_LOW_CAP) * BL_LOW;
+  const high = net > BL_LOW_CAP ? (net - BL_LOW_CAP) * BL_HIGH : 0;
+  return low + high;
+}
+function marginalRate(net) {
+  let prev = 0;
+  for (const b of BRACKETS) {
+    if (net <= b.upTo) return { rate: b.rate, from: prev, to: b.upTo };
+    prev = b.upTo;
+  }
+}
+function yearNet(y) {
+  const i = data.entries.filter(e=>e.type==='in' && e.date.startsWith(y)).reduce((s,e)=>s+e.amount,0);
+  const o = data.entries.filter(e=>e.type==='out' && e.date.startsWith(y)).reduce((s,e)=>s+e.amount,0);
+  return { i, o, net: i - o };
+}
+function taxEstimate(y) {
+  const { net } = yearNet(y);
+  const gross = calcIncomeTax(net);
+  const credits = (data.settings.points || 2.25) * POINT_VALUE;
+  const income = Math.max(0, gross - credits);
+  const bl = data.settings.includeBL ? calcBL(net) : 0;
+  return { net, gross, credits, income, bl, total: income + bl };
+}
+
+function renderTax() {
+  const y = new Date().getFullYear().toString();
+  document.getElementById('taxYearLbl').textContent = y;
+  const t = taxEstimate(y);
+  const m = marginalRate(Math.max(0, t.net));
+  document.getElementById('taxCalc').innerHTML = `
+    <div class="taxrow"><span>רווח נקי עד כה (${y})</span><b>${fmt(t.net)}</b></div>
+    <div class="taxrow"><span>מס לפי מדרגות</span><b>${fmt(t.gross)}</b></div>
+    <div class="taxrow"><span>נקודות זיכוי (${data.settings.points} × 2,904)</span><b style="color:#4ade80">−${fmt(t.credits)}</b></div>
+    <div class="taxrow"><span>מס הכנסה לתשלום</span><b>${fmt(t.income)}</b></div>
+    ${data.settings.includeBL ? `<div class="taxrow"><span>ביטוח לאומי + בריאות (אומדן)</span><b>${fmt(t.bl)}</b></div>` : ''}
+    <div class="taxrow"><span><b>סה"כ אומדן</b></span><b class="big">${fmt(t.total)}</b></div>
+    <div class="taxrow"><span>מדרגה שולית נוכחית</span><b>${(m.rate*100).toFixed(0)}%</b></div>
+  `;
+  document.getElementById('kTax').textContent = fmt(t.total);
+
+  const ynC = yearNet(y);
+  if (ynC.i > 0) {
+    const zairNet = ynC.i * 0.7;
+    const zairTax = Math.max(0, calcIncomeTax(zairNet) - t.credits) + (data.settings.includeBL ? calcBL(zairNet) : 0);
+    const diff = t.total - zairTax;
+    const better = diff > 0 ? 'עסק זעיר (30% אוטומטי)' : 'הוצאות בפועל';
+    const gap = Math.abs(diff);
+    document.getElementById('zairCompare').innerHTML = `
+      <div class="alert ${gap > 500 ? 'warn' : 'info'}" style="margin-bottom:0">
+        <b>⚖️ מסלול עסק זעיר מול הוצאות בפועל</b>
+        הוצאות בפועל: ${fmt(ynC.o)} (${Math.round(ynC.o/ynC.i*100)}% מהמחזור) ← אומדן מס: ${fmt(t.total)}<br>
+        מסלול זעיר (30% אוטומטי): אומדן ${fmt(zairTax)}<br>
+        <b style="display:inline">משתלם יותר: ${better} — חיסכון ~${fmt(gap)}</b><br>
+        <span style="font-size:11px;color:#8b93a7">החלטה סופית עם הרו"ח; למסלול הזעיר יתרונות נוספים (פטור מדו"ח שנתי וממקדמות)</span>
+      </div>`;
+  } else { document.getElementById('zairCompare').innerHTML = ''; }
+
+  document.getElementById('brackets').innerHTML = BRACKETS.map((b,i) => {
+    const from = i===0 ? 0 : BRACKETS[i-1].upTo;
+    const cur = t.net > from && t.net <= b.upTo;
+    const label = b.upTo===Infinity ? `מעל ${fmt(721560)} (כולל מס יסף)` : `${fmt(from)} – ${fmt(b.upTo)}`;
+    return `<div class="bracket ${cur?'cur':''}"><span>${label}</span><b>${(b.rate*100).toFixed(0)}%</b></div>`;
+  }).join('');
+
+  // שנים קודמות
+  const years = [...new Set(data.entries.map(e=>e.date.slice(0,4)))].filter(x=>x < y).sort();
+  const cur = new Date().getFullYear();
+  for (let py = cur-3; py < cur; py++) if (!years.includes(String(py))) years.push(String(py));
+  years.sort();
+  document.getElementById('pastYears').innerHTML = years.map(py => {
+    const yn = yearNet(py);
+    const st = data.yearStatus[py] || 'לא דווח';
+    const stCls = st==='הוגש' ? 'yes' : (st==='בטיפול רו"ח' ? 'mid' : 'no');
+    const lossNote = yn.net < 0
+      ? `<div class="disc" style="color:#4ade80">💡 הפסד של ${fmt(-yn.net)} — הפסד עסקי מדווח מתגלגל קדימה ומקזז רווחים עתידיים. שווה עד ~${fmt(-yn.net*0.3)} חיסכון מס עתידי (לפי מדרגה 31%). זו הסיבה הכי טובה להסדיר.</div>`
+      : (yn.net > 0 ? `<div class="disc" style="color:#ff9d3d">רווח לא מדווח — חשיפה לקנסות וריבית. להסדיר מול הרו"ח בהקדם.</div>` : '');
+    return `<div class="yearcard">
+      <h4>שנת ${py} <span class="st ${stCls}">${st}</span></h4>
+      <div class="taxrow"><span>הכנסות שתועדו</span><b style="color:#4ade80">${fmt(yn.i)}</b></div>
+      <div class="taxrow"><span>הוצאות שתועדו</span><b style="color:#ff6b6b">${fmt(yn.o)}</b></div>
+      <div class="taxrow"><span>רווח/הפסד</span><b>${fmt(yn.net)}</b></div>
+      ${lossNote}
+      <div class="row2" style="margin-top:8px">
+        <button class="chip" onclick="setYearStatus('${py}','לא דווח')">לא דווח</button>
+        <button class="chip" onclick="setYearStatus('${py}','בטיפול רו&quot;ח')">בטיפול רו"ח</button>
+        <button class="chip green" onclick="setYearStatus('${py}','הוגש')">הוגש ✓</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="msg">אין נתונים משנים קודמות — הזן הוצאות היסטוריות עם התאריך המקורי שלהן</div>';
+}
+
+/* ===== התראות ===== */
+function learnPatterns() {
+  const groups = {};
+  data.entries.forEach(e => {
+    const k = e.type+'|'+e.cat+'|'+Math.round(e.amount/10)*10;
+    if (!groups[k]) groups[k] = { type:e.type, cat:e.cat, amounts:[], months:new Set() };
+    const g = groups[k];
+    g.amounts.push(e.amount);
+    g.months.add(e.date.slice(0,7));
+  });
+  return Object.values(groups);
+}
+function buildQuick() {
+  const pats = learnPatterns().filter(g=>g.amounts.length>=2).sort((a,b)=>b.amounts.length-a.amounts.length);
+  const mk = g => {
+    const avg = Math.round(g.amounts.reduce((s,x)=>s+x,0)/g.amounts.length);
+    return `<button type="button" class="qbtn" onclick="quickFill('${g.type}','${escA(g.cat)}',${avg})">⚡ ${escH(g.cat)} · ${fmt(avg)}</button>`;
+  };
+  document.getElementById('quick-in').innerHTML = pats.filter(g=>g.type==='in').slice(0,4).map(mk).join('');
+  document.getElementById('quick-out').innerHTML = pats.filter(g=>g.type==='out').slice(0,5).map(mk).join('');
+}
+function quickFill(type, cat, amt) {
+  document.getElementById(type+'-cat').value = cat;
+  document.getElementById(type+'-amt').value = amt;
+  document.getElementById(type+'-date').valueAsDate = new Date();
+  setStatus('⚡ מולא — בדוק ולחץ הוסף');
+}
+
+function buildAlerts() {
+  const alerts = [];
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0,7);
+  const year = now.getFullYear().toString();
+  const t = taxEstimate(year);
+
+  // תקרת עוסק פטור
+  const yIn = yearNet(year).i;
+  const pct = Math.min(100, yIn/CAP*100);
+  if (pct >= 85) alerts.push({lvl:'crit', t:'🚨 מתקרב לתקרת עוסק פטור!', b:`מחזור: ${fmt(yIn)} — ${pct.toFixed(0)}% מ-122,833 ₪. חובה לפנות למע"מ לפני חריגה, אחרת 18% מע"מ על ההפרש מהכיס.`});
+  else if (pct >= 60) alerts.push({lvl:'warn', t:'⚠️ מעקב תקרת עוסק פטור', b:`מחזור: ${fmt(yIn)} — ${pct.toFixed(0)}% מהתקרה. לתכנן מעבר למורשה עם הרו"ח.`});
+
+  // מדרגות מס — התראת מעבר מדרגה
+  if (t.net > 0) {
+    const m = marginalRate(t.net);
+    const toNext = m.to === Infinity ? null : m.to - t.net;
+    if (toNext !== null && toNext <= 15000) {
+      const next = marginalRate(m.to + 1);
+      alerts.push({lvl:'info', t:`📊 עוד ${fmt(toNext)} רווח — מדרגת מס חדשה`, b:`אתה במדרגת ${(m.rate*100).toFixed(0)}%. מעל ${fmt(m.to)} רווח שנתי, השקלים הנוספים ימוסו ב-${(next.rate*100).toFixed(0)}%. זה רק על החלק שמעל — אף פעם לא משתלם להרוויח פחות. שווה לתזמן הוצאות מוכרות (ציוד, מנויים שנתיים) לפני סוף השנה.`});
+    }
+    // אומדן מס מצטבר — הפרשה
+    if (t.total > 3000) alerts.push({lvl:'info', t:`💰 אומדן מס מצטבר: ${fmt(t.total)}`, b:`מומלץ להפריש בצד ~${Math.round(t.total/Math.max(1,now.getMonth()+1))} ₪ לחודש לחשבון נפרד, כדי שהדוח השנתי לא יתפוס אותך בלי נזילות.`});
+  }
+
+  // שנים קודמות לא מוסדרות
+  const pastYears = [...new Set(data.entries.map(e=>e.date.slice(0,4)))].filter(x=>x<year);
+  pastYears.forEach(py => {
+    const st = data.yearStatus[py] || 'לא דווח';
+    if (st === 'הוגש') return;
+    const yn = yearNet(py);
+    if (yn.net < 0) alerts.push({lvl:'warn', t:`📂 ${py}: הפסד של ${fmt(-yn.net)} שלא הוסדר`, b:`הפסד מדווח = נכס! הוא מקזז רווחים עתידיים ושווה עד ~${fmt(-yn.net*0.3)} חיסכון מס. סטטוס: ${st}. קח את זה לפגישת הרו"ח.`});
+    else if (yn.i > 0) alerts.push({lvl:'crit', t:`📂 ${py}: הכנסה לא מדווחת`, b:`תועדו ${fmt(yn.i)} הכנסות בשנה שטרם הוסדרה — חשיפה לקנסות וריבית שגדלה עם הזמן. עדיף הסדרה יזומה מאשר מכתב מרשות המסים. סטטוס: ${st}.`});
+  });
+
+  // חיובים חוזרים שלא הוזנו
+  learnPatterns().filter(g => g.type==='out' && g.months.size>=2 && !g.months.has(thisMonth)).forEach(g => {
+    const avg = Math.round(g.amounts.reduce((s,x)=>s+x,0)/g.amounts.length);
+    if (now.getDate() >= 10) alerts.push({lvl:'warn', t:`🔄 חיוב חוזר שטרם הוזן: ${g.cat}`, b:`בד"כ ~${fmt(avg)} בחודש. החודש לא הוזן — אולי כבר ירד בכרטיס?`, act:`quickFill('out','${escA(g.cat)}',${avg}); showTab('out',document.getElementById('tb-out'))`, actTxt:'⚡ הזן עכשיו'});
+  });
+
+  // קבלות חסרות
+  const noRcpt = data.entries.filter(e=>!e.hasReceipt).length;
+  if (noRcpt >= 3) alerts.push({lvl:'warn', t:`📎 ${noRcpt} שורות ללא קבלה`, b:'נדרשות אסמכתאות (שמירה 7 שנים). השלם צילומים מהמייל.'});
+
+  // הצהרת מע"מ
+  const m2 = now.getMonth()+1;
+  if (m2 === 12 || m2 === 1) alerts.push({lvl:'warn', t:'📅 הצהרת עוסק פטור עד 31.1', b:'ודא שכל ההכנסות מוזנות והורד אקסל לרו"ח.'});
+
+  // 💡 מנוע המלצות
+  try {
+    const catsY = new Set(data.entries.filter(e=>e.type==='out' && e.date.startsWith(year)).map(e=>e.cat));
+    const has = p => [...catsY].some(c=>c.includes(p));
+    const RECS = [
+      { id:'home', cond: !has('משרד ביתי'), t:'🏠 עובד מהבית? משרד ביתי מוכר', b:'חלק יחסי מחשמל, ארנונה ושכ"ד לפי חדר העבודה — מאות עד אלפי ₪ בשנה. שאל את הרו"ח מה האחוז והתחל לתעד.' },
+      { id:'net', cond: !has('אינטרנט'), t:'📶 אינטרנט וסלולר — חלק עסקי מוכר', b:'אתה עובד רק מהמובייל — חלק מחשבון הסלולר והאינטרנט הוא הוצאה עסקית. תעד חודשית.' },
+      { id:'ai', cond: !has('AI'), t:'🤖 מנויי AI וכלי פיתוח — הוצאה מוכרת', b:'Claude, GitHub וכל כלי עבודה דיגיטלי — הוצאות עסקיות מובהקות למפתח ואלגו-טריידר. הוסף את המנויים.' },
+      { id:'dev', cond: data.entries.some(e=>e.type==='in' && e.cat.includes('לקוח')) && !has('Firebase'), t:'🔧 הוצאות הפיתוח של הלקוחות', b:'Firebase, דומיינים ואחסון של אפליקציות הלקוחות — הוצאה ישירה מול ההכנסה.' },
+      { id:'pens', cond: !(data.docs && data.docs['pens']), t:'💰 פנסיה לעצמאי — חובה + הטבת מס', b:'הפקדה לפנסיה היא חובה חוקית לעצמאי (יש קנס) וגם ניכוי מס. קרן השתלמות — ההטבה הכי גדולה שיש לעצמאי. שאלה ראשונה לרו"ח.' },
+      { id:'trum', cond: true, t:'🎁 תרומות = זיכוי 35%, לא הוצאה', b:'תרומות למוסד עם אישור 46 (ועד הרבנים וכו׳) מזכות ב-35% חזרה בדוח. לא לרשום כהוצאה עסקית — לשמור קבלות בנפרד ולסמן בטאב המסמכים 📄.' },
+      { id:'kids', cond: !(data.settings.k05 || data.settings.k617), t:'👶 נקודות זיכוי על רועי וליבי', b:'מלא ילדים בהגדרות המס ולחץ "חשב אוטומטית" — כל ילד עד 5 = 7,260 ₪ זיכוי שנתי לאב. האומדן יתדייק מיד.', act:"showTab('tax',document.getElementById('tb-tax'))", actTxt:'פתח הגדרות' },
+      { id:'miluR', cond: !data.settings.milu, t:'🎖 נקודות מילואים 2026 — חדש!', b:'מילואימניק פעיל? מ-2026 יש נקודות זיכוי חדשות לפי ימי שירות — עד 11,616 ₪ בשנה. בדוק זכאות ועדכן בהגדרות המס.', act:"showTab('tax',document.getElementById('tb-tax'))", actTxt:'פתח הגדרות' },
+    ];
+    RECS.filter(r => r.cond && !(data.dismissed && data.dismissed[r.id])).slice(0,4).forEach(r => {
+      const dismiss = `dismissRec('${r.id}')`;
+      alerts.push({lvl:'info', t:r.t, b:r.b, act: r.act || dismiss, actTxt: r.actTxt || '✓ הבנתי', act2: r.act ? dismiss : null});
+    });
+  } catch(err) {}
+
+  try {
+    const dTotal = DOCS.reduce((a,g)=>a+g.items.length,0);
+    const dDone = DOCS.reduce((a,g)=>a+g.items.filter(i=>data.docs && data.docs[i.id]).length,0);
+    if ([1,2,3,4].includes(m2) && dDone < dTotal) {
+      const missing106 = !(data.docs && data.docs['106']);
+      alerts.push({lvl: missing106 ? 'crit' : 'warn', t:`📄 עונת הדוח — ${dTotal-dDone} מסמכים חסרים`, b: missing106 ? 'כולל טופס 106 של טל — בלעדיו אי אפשר להגיש דוח משותף' : 'השלם בטאב המסמכים'});
+    }
+  } catch(err) {}
+
+  if (!alerts.length) alerts.push({lvl:'ok', t:'✅ הכל מסודר', b:'אין התראות פתוחות.'});
+
+  document.getElementById('alerts-list').innerHTML = alerts.map(a =>
+    `<div class="alert ${a.lvl}"><b>${a.t}</b>${a.b}${a.act?`<br><button class="abtn" onclick="${a.act}">${a.actTxt}</button>`:''}${a.act2?` <button class="abtn" style="background:#232b3d" onclick="${a.act2}">✕ הסתר</button>`:''}</div>`
+  ).join('');
+  const n = alerts.filter(a=>a.lvl==='crit'||a.lvl==='warn').length;
+  document.getElementById('tb-alerts').innerHTML = '🔔' + (n? `<span class="bdg">${n}</span>`:'');
+}
+
+/* ===== קבלות ===== */
+function compress(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1100;
+      let w = img.width, h = img.height;
+      if (w > max || h > max) { const r = Math.min(max/w, max/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.68));
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+async function stageFile(type) {
+  const f = document.getElementById(type+'-file').files[0];
+  if (!f) return;
+  try {
+    staged[type] = await compress(f);
+    const az = document.getElementById(type+'-az');
+    az.classList.add('has'); az.textContent = '✓ קבלה מצורפת';
+  } catch(e) { setStatus('⚠ שגיאה בקריאת התמונה'); }
+}
+async function addEntry(type) {
+  const d = document.getElementById(type+'-date').value;
+  const a = parseFloat(document.getElementById(type+'-amt').value);
+  const c = document.getElementById(type+'-cat').value;
+  const n = document.getElementById(type+'-note').value;
+  if (!d || !a) return false;
+  const id = Date.now();
+  const hasReceipt = !!staged[type];
+  data.entries.push({ id, type, date: d, amount: a, cat: c, note: n, hasReceipt });
+  if (hasReceipt) {
+    try { await window.storage.set(RK(id), staged[type]); }
+    catch(e) { data.entries.find(x=>x.id===id).hasReceipt = false; }
+    staged[type] = null;
+    const az = document.getElementById(type+'-az');
+    az.classList.remove('has'); az.textContent = '📎 צרף קבלה';
+    document.getElementById(type+'-file').value = '';
+  }
+  document.getElementById(type+'-amt').value = '';
+  document.getElementById(type+'-usd').value = '';
+  document.getElementById(type+'-note').value = '';
+  await save(); render();
+  return false;
+}
+async function attachToExisting(id) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    if (!inp.files[0]) return;
+    try {
+      const dataUrl = await compress(inp.files[0]);
+      await window.storage.set(RK(id), dataUrl);
+      const e = data.entries.find(x=>x.id===id);
+      if (e) e.hasReceipt = true;
+      await save(); render(); setStatus('✓ קבלה נשמרה');
+    } catch(e) { setStatus('⚠ שגיאה'); }
+  };
+  inp.click();
+}
+async function viewReceipt(id) {
+  try {
+    const r = await window.storage.get(RK(id));
+    if (r && r.value) {
+      if (r.value.startsWith('data:image')) {
+        viewing = id;
+        document.getElementById('viewer-img').src = r.value;
+        document.getElementById('viewer').classList.remove('hidden');
+      } else {
+        const a = document.createElement('a');
+        a.href = r.value; a.download = 'kabala-'+id+'.pdf'; a.click();
+        setStatus('✓ ה-PDF ירד לצפייה');
+      }
+    } else setStatus('⚠ לא נמצאה');
+  } catch(e) { setStatus('⚠ לא נמצאה'); }
+}
+function closeViewer(){ document.getElementById('viewer').classList.add('hidden'); viewing = null; }
+async function removeReceipt() {
+  if (!viewing) return;
+  try { await window.storage.delete(RK(viewing)); } catch(e) {}
+  const e = data.entries.find(x=>x.id===viewing);
+  if (e) e.hasReceipt = false;
+  await save(); closeViewer(); render();
+}
+async function delEntry(id) {
+  const e = data.entries.find(x=>x.id===id);
+  if (e && !confirm('למחוק את השורה "'+e.cat+'" על סך '+fmt(e.amount)+'?')) return;
+  if (e && e.hasReceipt) { try { await window.storage.delete(RK(id)); } catch(err) {} }
+  data.entries = data.entries.filter(x => x.id !== id);
+  await save(); render();
+}
+
+function render() {
+  const ins = data.entries.filter(e=>e.type==='in').sort((a,b)=>b.date.localeCompare(a.date));
+  const outs = data.entries.filter(e=>e.type==='out').sort((a,b)=>b.date.localeCompare(a.date));
+  const tIn = ins.reduce((s,e)=>s+e.amount,0), tOut = outs.reduce((s,e)=>s+e.amount,0);
+  document.getElementById('kIn').textContent = fmt(tIn);
+  document.getElementById('kOut').textContent = fmt(tOut);
+  const net = tIn - tOut;
+  const kN = document.getElementById('kNet');
+  kN.textContent = fmt(net);
+  kN.style.color = net >= 0 ? '#4ade80' : '#ff6b6b';
+
+  const li = (e, cls) => `<div class="entry">
+    <div class="entry-top">
+      <div class="inf"><b>${escH(e.cat)} ${e.hasReceipt?'<span class="badge">📎</span>':''}</b><span>${e.date}${e.note? ' · '+escH(e.note):''}</span></div>
+      <span class="amt ${cls}">${cls==='in'?'+':'−'}${fmt(e.amount)}</span>
+    </div>
+    <div class="entry-actions">
+      ${e.hasReceipt
+        ? `<button class="chip green" onclick="viewReceipt(${e.id})">👁️ קבלה</button>`
+        : `<button class="chip" onclick="attachToExisting(${e.id})">📎 צרף</button>`}
+      <button class="chip red" onclick="delEntry(${e.id})">🗑️</button>
+    </div>
+  </div>`;
+  document.getElementById('list-in').innerHTML = ins.length ? ins.map(e=>li(e,'in')).join('') : '<div class="msg">אין הכנסות עדיין</div>';
+  document.getElementById('list-out').innerHTML = outs.length ? outs.map(e=>li(e,'out')).join('') : '<div class="msg">אין הוצאות עדיין — אפשר להזין גם שנים קודמות עם התאריך המקורי</div>';
+
+  const byCat = {}, byYear = {};
+  data.entries.forEach(e => {
+    const k = (e.type==='in'?'הכנסה · ':'הוצאה · ') + e.cat;
+    byCat[k] = (byCat[k]||0) + e.amount;
+    const y = e.date.slice(0,4);
+    if (!byYear[y]) byYear[y] = {i:0,o:0};
+    byYear[y][e.type==='in'?'i':'o'] += e.amount;
+  });
+  document.getElementById('sum-cat').innerHTML = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="cat-sum"><span>${k}</span><b>${fmt(v)}</b></div>`).join('') || '<div class="msg">אין נתונים</div>';
+  document.getElementById('sum-year').innerHTML = Object.entries(byYear).sort().map(([y,v])=>`<div class="cat-sum"><span><b>${y}</b></span><span style="color:#4ade80">+${fmt(v.i)}</span><span style="color:#ff6b6b">−${fmt(v.o)}</span><b>${fmt(v.i-v.o)}</b></div>`).join('') || '<div class="msg">אין נתונים</div>';
+
+  const year = new Date().getFullYear().toString();
+  const yIn = yearNet(year).i;
+  document.getElementById('capTxt').textContent = fmt(yIn) + ' / ' + fmt(CAP);
+  document.getElementById('capBar').style.width = Math.min(100, yIn/CAP*100) + '%';
+
+  buildQuick();
+  renderTax();
+  renderDocs();
+  buildAlerts();
+}
+
+function showTab(t, el) {
+  ['in','out','alerts','tax','docs','sum'].forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function exportXLSX() {
+  try {
+    const wb = XLSX.utils.book_new();
+    const head = ['תאריך','סוג','קטגוריה','סכום ₪','הערה','קבלה'];
+    const rows = t => data.entries.filter(e=>e.type===t).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>[e.date, t==='in'?'הכנסה':'הוצאה', e.cat, e.amount, e.note||'', e.hasReceipt?'כן':'']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rows('in')]), 'הכנסות');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rows('out')]), 'הוצאות');
+    // גיליון לפי שנים — בדיוק מה שהרו"ח צריך להסדרה
+    const byY = {};
+    data.entries.forEach(e => {
+      const y = e.date.slice(0,4);
+      if (!byY[y]) byY[y] = {i:0,o:0};
+      byY[y][e.type==='in'?'i':'o'] += e.amount;
+    });
+    const yRows = Object.entries(byY).sort().map(([y,v])=>[y, v.i, v.o, v.i-v.o, data.yearStatus[y]||'']);
+    const totI = Object.values(byY).reduce((a,v)=>a+v.i,0), totO = Object.values(byY).reduce((a,v)=>a+v.o,0);
+    yRows.push(['סה"כ', totI, totO, totI-totO, '']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['שנה','הכנסות','הוצאות','רווח/הפסד','סטטוס דיווח'],...yRows]), 'לפי שנים');
+    const byCat = {};
+    data.entries.forEach(e => { const k=(e.type==='in'?'הכנסה':'הוצאה')+' · '+e.cat; byCat[k]=(byCat[k]||0)+e.amount; });
+    const sumRows = Object.entries(byCat).map(([k,v])=>[k,v]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['קטגוריה','סכום ₪'],...sumRows]), 'לפי קטגוריה');
+    XLSX.writeFile(wb, 'hanhalat-heshbonot-uriel-pinto.xlsx');
+    setStatus('✓ האקסל ירד');
+  } catch(e) {
+    let csv = '\uFEFFתאריך,סוג,קטגוריה,סכום,הערה,קבלה\n';
+    data.entries.forEach(e => csv += `${e.date},${e.type==='in'?'הכנסה':'הוצאה'},"${e.cat}",${e.amount},"${e.note||''}",${e.hasReceipt?'כן':''}\n`);
+    const b = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'hanhalat-heshbonot.csv'; a.click();
+    setStatus('✓ ירד כ-CSV');
+  }
+}
+
+async function exportZip() {
+  const withR = data.entries.filter(e=>e.hasReceipt);
+  if (!withR.length) { setStatus('אין קבלות עדיין'); return; }
+  setStatus('אוסף קבלות...');
+  try {
+    const zip = new JSZip();
+    for (const e of withR) {
+      try {
+        const r = await window.storage.get(RK(e.id));
+        if (r && r.value) {
+          const b64 = r.value.split(',')[1];
+          const name = `${e.date}_${e.cat.replace(/[^א-תa-zA-Z0-9]/g,'-').slice(0,30)}_${e.amount}.jpg`;
+          zip.file(name, b64, {base64: true});
+        }
+      } catch(err) {}
+    }
+    const blob = await zip.generateAsync({type:'blob'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kabalot-uriel-pinto.zip';
+    a.click();
+    setStatus('✓ ה-ZIP ירד');
+  } catch(e) { setStatus('⚠ שגיאה'); }
+}
+
+
+/* ===== קבצים וחבילה שנתית ===== */
+function pickFile(accept, cb) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = accept;
+  inp.onchange = () => { if (inp.files[0]) cb(inp.files[0]); };
+  inp.click();
+}
+async function storeIncomingFile(file, key) {
+  if (file.type && file.type.startsWith('image/')) {
+    const d = await compress(file);
+    await window.storage.set(key, d);
+    return true;
+  }
+  if (file.size > 3500000) { setStatus('⚠ קובץ גדול מדי (עד 3.5MB ל-PDF)'); return false; }
+  const d = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  await window.storage.set(key, d);
+  return true;
+}
+async function uploadDocFile(docId) {
+  pickFile('image/*,.pdf', async f => {
+    try {
+      const ok = await storeIncomingFile(f, 'hh-doc-' + docId);
+      if (ok) { data.docFiles[docId] = { name: f.name, ts: Date.now() }; await save(); render(); setStatus('✓ הטופס נשמר'); }
+    } catch(e) { setStatus('⚠ שגיאה בשמירה'); }
+  });
+}
+async function uploadExtraFile() {
+  const y = document.getElementById('xf-year').value;
+  const name = (document.getElementById('xf-name').value || '').trim() || 'מסמך';
+  pickFile('image/*,.pdf', async f => {
+    const id = Date.now();
+    try {
+      const ok = await storeIncomingFile(f, 'hh-file-' + id);
+      if (ok) { data.extraFiles.push({ id, year: y, name }); document.getElementById('xf-name').value = ''; await save(); render(); setStatus('✓ המסמך נשמר לשנת ' + y); }
+    } catch(e) { setStatus('⚠ שגיאה'); }
+  });
+}
+async function viewStoredFile(key, title) {
+  try {
+    const r = await window.storage.get(key);
+    if (!r || !r.value) { setStatus('⚠ לא נמצא'); return; }
+    if (r.value.startsWith('data:image')) {
+      viewing = null;
+      document.getElementById('viewer-img').src = r.value;
+      document.getElementById('viewer').classList.remove('hidden');
+    } else {
+      const a = document.createElement('a');
+      a.href = r.value;
+      a.download = (title || 'doc').replace(/[^א-תa-zA-Z0-9 ]/g,'').slice(0,40) + '.pdf';
+      a.click();
+      setStatus('✓ ה-PDF ירד לצפייה');
+    }
+  } catch(e) { setStatus('⚠ לא נמצא'); }
+}
+async function delExtraFile(id) {
+  if (!confirm('למחוק את המסמך?')) return;
+  try { await window.storage.delete('hh-file-' + id); } catch(e) {}
+  data.extraFiles = data.extraFiles.filter(f => f.id !== id);
+  await save(); render();
+}
+function extOf(d) {
+  if (d.startsWith('data:application/pdf')) return 'pdf';
+  if (d.startsWith('data:image/png')) return 'png';
+  return 'jpg';
+}
+async function buildYearPackage() {
+  const y = prompt('חבילה מלאה לאיזו שנה?', String(new Date().getFullYear()));
+  if (!y) return;
+  setStatus('בונה חבילה ל-' + y + '...');
+  try {
+    const zip = new JSZip();
+    // 1) דוח אקסל של השנה
+    const wb = XLSX.utils.book_new();
+    const head = ['תאריך','סוג','קטגוריה','סכום ₪','הערה','קבלה'];
+    const rws = t => data.entries.filter(e=>e.type===t && e.date.startsWith(y)).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>[e.date, t==='in'?'הכנסה':'הוצאה', e.cat, e.amount, e.note||'', e.hasReceipt?'כן':'']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rws('in')]), 'הכנסות');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rws('out')]), 'הוצאות');
+    const yn = yearNet(y);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['סעיף','₪'],['הכנסות', yn.i],['הוצאות', yn.o],['רווח/הפסד', yn.net]]), 'סיכום');
+    zip.file(`doch-${y}.xlsx`, XLSX.write(wb, {bookType:'xlsx', type:'base64'}), {base64:true});
+    // 2) קבלות השנה
+    for (const e of data.entries.filter(e=>e.hasReceipt && e.date.startsWith(y))) {
+      try {
+        const r = await window.storage.get(RK(e.id));
+        if (r && r.value) zip.file(`kabalot/${e.date}_${e.cat.replace(/[^א-תa-zA-Z0-9]/g,'-').slice(0,30)}_${e.amount}.${extOf(r.value)}`, r.value.split(',')[1], {base64:true});
+      } catch(err) {}
+    }
+    // 3) טפסי הצ'קליסט
+    for (const [docId] of Object.entries(data.docFiles || {})) {
+      try {
+        const r = await window.storage.get('hh-doc-' + docId);
+        if (r && r.value) zip.file(`tfasim/${docId}.${extOf(r.value)}`, r.value.split(',')[1], {base64:true});
+      } catch(err) {}
+    }
+    // 4) מסמכים נוספים של השנה
+    for (const f of (data.extraFiles || []).filter(f=>String(f.year)===String(y))) {
+      try {
+        const r = await window.storage.get('hh-file-' + f.id);
+        if (r && r.value) zip.file(`tfasim/${y}_${f.name.replace(/[^א-תa-zA-Z0-9 ]/g,'').slice(0,30)}.${extOf(r.value)}`, r.value.split(',')[1], {base64:true});
+      } catch(err) {}
+    }
+    const blob = await zip.generateAsync({type:'blob'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tik-roeh-heshbon-${y}-uriel-pinto.zip`;
+    a.click();
+    setStatus('✓ החבילה המלאה ל-' + y + ' ירדה');
+  } catch(e) { setStatus('⚠ שגיאה בבניית החבילה'); }
+}
+
+
+/* ===== 🤖 סריקה חכמה עם Claude ===== */
+let aiPending = null;
+function showAiBox(h) { document.getElementById('ai-box').innerHTML = h; if (h) window.scrollTo({top:0, behavior:'smooth'}); }
+function readAsDataURL(f) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+}
+async function aiScan() {
+  pickFile('image/*,.pdf', async f => {
+    showAiBox('<div class="panel" style="text-align:center">🤖 Claude מנתח את הקובץ...</div>');
+    try {
+      let b64, blockType, media;
+      const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+      if (isPdf) {
+        if (f.size > 3500000) { showAiBox('<div class="alert warn"><b>⚠ PDF גדול מדי</b>עד 3.5MB</div>'); return; }
+        const d = await readAsDataURL(f);
+        aiPending = { dataUrl: d };
+        b64 = d.split(',')[1]; blockType = 'document'; media = 'application/pdf';
+      } else {
+        const d = await compress(f);
+        aiPending = { dataUrl: d };
+        b64 = d.split(',')[1]; blockType = 'image'; media = 'image/jpeg';
+      }
+      const outCats = [...document.getElementById('out-cat').options].map(o=>o.value);
+      const inCats = [...document.getElementById('in-cat').options].map(o=>o.value);
+      const prompt = 'נתח את המסמך המצורף (קבלה/חשבונית/אישור/טופס מס ישראלי). החזר JSON בלבד, בלי שום טקסט נוסף ובלי markdown:\n{"kind":"receipt"או"tax_form","type":"in"או"out"אוnull,"date":"YYYY-MM-DD"אוnull,"amount_ils":מספראוnull,"amount_usd":מספראוnull,"category":מחרוזתאוnull,"doc_id":מחרוזתאוnull,"note":"תיאור קצר בעברית"}\nכללים:\n- receipt = קבלה/חיוב/תשלום. type=out לקנייה/חיוב של המשתמש, in לתקבול/משיכה לזכותו.\n- category להוצאה חייבת להיות בדיוק אחת מ: ' + JSON.stringify(outCats) + '\n- category להכנסה בדיוק אחת מ: ' + JSON.stringify(inCats) + '\n- tax_form = טופס רשמי. doc_id: "106"=טופס 106 שכר, "leida"=דמי לידה, "milu"=תגמולי מילואים, "867"=אישור מס בנקאי 867, "blz"=אישור דמי ביטוח לאומי, "loan"=אישור ריבית הלוואה, "pens"=אישור פנסיה/השתלמות, "trum"=קבלת תרומה, "rise"=אישור משיכה מפרמה.\n- קבלת תרומה = tax_form עם doc_id "trum", לא הוצאה!\n- סכום בדולר ← amount_usd. סכום בשקלים ← amount_ils.';
+      const body = { model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: [ { type: blockType, source: { type: 'base64', media_type: media, data: b64 } }, { type: 'text', text: prompt } ] }] };
+      const resp = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const dj = await resp.json();
+      const text = (dj.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+      const clean = text.replace(/```json|```/g, '').trim();
+      const p = JSON.parse(clean);
+      renderAiResult(p);
+    } catch(e) {
+      showAiBox('<div class="alert warn"><b>⚠ הניתוח נכשל</b>נסה שוב או הזן ידנית. <button class="abtn" onclick="showAiBox(\'\')">סגור</button></div>');
+    }
+  });
+}
+function docTitle(id) {
+  for (const g of DOCS) { const i = g.items.find(x => x.id === id); if (i) return i.t; }
+  return id;
+}
+function renderAiResult(p) {
+  const rate = parseFloat(document.getElementById('out-rate').value) || 3;
+  let amt = p.amount_ils;
+  let usdNote = '';
+  if (!amt && p.amount_usd) { amt = Math.round(p.amount_usd * rate * 100) / 100; usdNote = ' ($' + p.amount_usd + ' בשער ' + rate + ')'; }
+  let h = '<div class="panel" style="border:1px solid #7c5cff"><b style="color:#b39cff">🤖 Claude זיהה:</b>';
+  if (p.kind === 'tax_form' && p.doc_id) {
+    h += '<div class="taxrow"><span>סוג מסמך</span><b>' + escH(docTitle(p.doc_id)) + '</b></div>';
+    if (p.note) h += '<div class="taxrow"><span>פרטים</span><b>' + escH(p.note) + '</b></div>';
+    h += '<button class="btn" onclick="aiAttachDoc(\'' + p.doc_id + '\')">📎 שייך לטופס בצ\'קליסט</button>';
+  } else {
+    const typeTxt = p.type === 'in' ? 'הכנסה' : 'הוצאה';
+    h += '<div class="taxrow"><span>סוג</span><b>' + typeTxt + '</b></div>';
+    h += '<div class="taxrow"><span>תאריך</span><b>' + (p.date || 'היום') + '</b></div>';
+    h += '<div class="taxrow"><span>סכום</span><b>' + (amt ? fmt(amt) + usdNote : 'לא זוהה') + '</b></div>';
+    h += '<div class="taxrow"><span>קטגוריה</span><b>' + escH(p.category || 'אחר') + '</b></div>';
+    if (p.note) h += '<div class="taxrow"><span>הערה</span><b>' + escH(p.note) + '</b></div>';
+    if (amt) {
+      window._aiParsed = { type: p.type || 'out', date: p.date, amount: amt, category: p.category, note: (p.note || '') + usdNote };
+      h += '<button class="btn" onclick="aiAddEntry()">✓ אשר והוסף + קבלה מצורפת</button>';
+    }
+  }
+  h += '<button class="btn sec" onclick="showAiBox(\'\'); aiPending=null;">✕ בטל</button></div>';
+  showAiBox(h);
+}
+async function aiAddEntry() {
+  const p = window._aiParsed;
+  if (!p || !aiPending) return;
+  const id = Date.now();
+  const validOut = [...document.getElementById('out-cat').options].map(o=>o.value);
+  const validIn = [...document.getElementById('in-cat').options].map(o=>o.value);
+  const valid = p.type === 'in' ? validIn : validOut;
+  const cat = valid.includes(p.category) ? p.category : 'אחר';
+  const date = (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) ? p.date : new Date().toISOString().slice(0,10);
+  data.entries.push({ id, type: p.type, date, amount: p.amount, cat, note: p.note || '', hasReceipt: true });
+  try { await window.storage.set(RK(id), aiPending.dataUrl); }
+  catch(e) { data.entries.find(x=>x.id===id).hasReceipt = false; }
+  aiPending = null; window._aiParsed = null;
+  showAiBox('');
+  await save(); render();
+  setStatus('✓ נוסף ע"י AI עם קבלה');
+}
+async function aiAttachDoc(docId) {
+  if (!aiPending) return;
+  try {
+    await window.storage.set('hh-doc-' + docId, aiPending.dataUrl);
+    data.docFiles[docId] = { name: 'ai-scan', ts: Date.now() };
+    aiPending = null;
+    showAiBox('');
+    await save(); render();
+    setStatus('✓ הטופס שויך: ' + docTitle(docId));
+    showTab('docs', document.getElementById('tb-docs'));
+  } catch(e) { setStatus('⚠ שגיאה בשמירה'); }
+}
+
+document.getElementById('in-date').valueAsDate = new Date();
+document.getElementById('out-date').valueAsDate = new Date();
+load();
+</script>
+</body>
+</html>
