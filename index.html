@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>הנה"ח FINAL — אוריאל פינטו</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<meta name="robots" content="noindex, nofollow">
+<!-- ספריות מאוחסנות מקומית: עובד אופליין, בלי תלות ב-CDN ובלי סיכון שרשרת אספקה.
+     xlsx@0.18.5 ו-jszip@3.10.1 — קבצי ה-dist הרשמיים, מאומתים מול npm registry. -->
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #0f1420; color: #e8e8e8; padding-bottom: 130px; }
@@ -288,20 +291,46 @@ let data = { entries: [], settings: { points: 2.25, includeBL: true, k05: 0, k61
 let staged = { in: null, out: null };
 let viewing = null;
 let uiYear = String(new Date().getFullYear());   // שנת המס המוצגת ('all' = הכל)
-const CAP = 122833;
-// מדרגות מס 2026 — שנתי (יגיעה אישית), רשות המסים
-const BRACKETS = [
-  { upTo: 84120,  rate: 0.10 },
-  { upTo: 120720, rate: 0.14 },
-  { upTo: 228000, rate: 0.20 },
-  { upTo: 301200, rate: 0.31 },
-  { upTo: 560280, rate: 0.35 },
-  { upTo: 721560, rate: 0.47 },
-  { upTo: Infinity, rate: 0.50 } // 47% + מס יסף 3%
-];
-const POINT_VALUE = 2904; // שווי נקודת זיכוי שנתי 2026
-// ביטוח לאומי + בריאות לעצמאי — אומדן: ~9.2% עד ~92,436 ₪ שנתי, ~23% מעל (עד תקרה)
-const BL_LOW_CAP = 92436, BL_LOW = 0.092, BL_HIGH = 0.23;
+/* =========================================================================
+   קבועי מס לפי שנה
+   ⚠️ כל המספרים כאן מתעדכנים מדי שנה. verified:false = טרם אומת מול
+   הפרסום הרשמי של רשות המסים / ביטוח לאומי, והאפליקציה תציג על כך אזהרה.
+   כדי להוסיף שנה: העתק בלוק, עדכן מספרים, וסמן verified:true אחרי בדיקה.
+   שנה שאין לה בלוק מחושבת לפי השנה המוגדרת הקרובה ביותר שקדמה לה.
+   ========================================================================= */
+const TAX_YEARS = {
+  2026: {
+    verified: false,
+    // מדרגות מס שנתיות (יגיעה אישית)
+    brackets: [
+      { upTo: 84120,  rate: 0.10 },
+      { upTo: 120720, rate: 0.14 },
+      { upTo: 228000, rate: 0.20 },
+      { upTo: 301200, rate: 0.31 },
+      { upTo: 560280, rate: 0.35 },
+      { upTo: 721560, rate: 0.47 },
+      { upTo: Infinity, rate: 0.50 },   // 47% + מס יסף 3%
+    ],
+    pointValue: 2904,      // שווי נקודת זיכוי שנתי
+    patorCap:   122833,    // תקרת מחזור לעוסק פטור
+    // ביטוח לאומי + בריאות לעצמאי
+    bl: {
+      lowCap:   92436,     // עד כאן שיעור מופחת (60% מהשכר הממוצע)
+      lowRate:  0.092,
+      highRate: 0.23,
+      maxCap:   608340,    // תקרת הכנסה מרבית לתשלום דמי ביטוח — מעליה לא משלמים
+    },
+    blDeductible: 0.52,    // 52% מדמי הביטוח מוכרים כניכוי מההכנסה החייבת
+  },
+};
+/* מחזיר את הקונפיגורציה לשנה, ואם אין — את הקרובה שקדמה לה */
+function cfgFor(y) {
+  const yy = +y;
+  if (TAX_YEARS[yy]) return { ...TAX_YEARS[yy], year: yy, exact: true };
+  const years = Object.keys(TAX_YEARS).map(Number).sort((a,b)=>a-b);
+  const use = years.filter(x => x <= yy).pop() ?? years[0];
+  return { ...TAX_YEARS[use], year: use, exact: false };
+}
 
 const fmt = n => Math.round(n).toLocaleString('he-IL') + ' ₪';
 const escA = x => String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/[\r\n]/g,' ');
@@ -508,7 +537,7 @@ function autoPoints() {
   if (!confirm('לחשב מחדש את סה"כ נקודות הזיכוי ל-' + pts + '? זה ידרוס את הערך הנוכחי (' + data.settings.points + ').')) return;
   document.getElementById('set-points').value = pts;
   saveSettings();
-  setStatus('✓ ' + pts + ' נקודות = ' + fmt(pts*POINT_VALUE) + ' זיכוי שנתי');
+  setStatus('✓ ' + pts + ' נקודות = ' + fmt(pts*cfgFor(taxYear()).pointValue) + ' זיכוי שנתי');
 }
 function setYearStatus(y, s) { data.yearStatus[y] = s; save(); render(); }
 function setStatus(t){ const s=document.getElementById('status'); s.textContent=t; setTimeout(()=>s.textContent='',2500); }
@@ -539,10 +568,10 @@ function usdCalc(type) {
 }
 
 /* ===== מנוע מס ===== */
-function calcIncomeTax(net) {
+function calcIncomeTax(net, cfg) {
   if (net <= 0) return 0;
   let tax = 0, prev = 0;
-  for (const b of BRACKETS) {
+  for (const b of cfg.brackets) {
     const slice = Math.min(net, b.upTo) - prev;
     if (slice > 0) tax += slice * b.rate;
     if (net <= b.upTo) break;
@@ -550,19 +579,24 @@ function calcIncomeTax(net) {
   }
   return tax;
 }
-function calcBL(net) {
+/* דמי ביטוח לאומי + בריאות לעצמאי.
+   שיעור מופחת עד lowCap, שיעור מלא מעליו — ועד maxCap בלבד:
+   מעל תקרת ההכנסה המרבית לא משלמים דמי ביטוח נוספים. */
+function calcBL(net, cfg) {
   if (net <= 0) return 0;
-  const low = Math.min(net, BL_LOW_CAP) * BL_LOW;
-  const high = net > BL_LOW_CAP ? (net - BL_LOW_CAP) * BL_HIGH : 0;
+  const liable = Math.min(net, cfg.bl.maxCap);
+  const low  = Math.min(liable, cfg.bl.lowCap) * cfg.bl.lowRate;
+  const high = liable > cfg.bl.lowCap ? (liable - cfg.bl.lowCap) * cfg.bl.highRate : 0;
   return low + high;
 }
-function marginalRate(net) {
+function marginalRate(net, cfg) {
   let prev = 0;
-  for (const b of BRACKETS) {
+  for (const b of cfg.brackets) {
     if (net <= b.upTo) return { rate: b.rate, from: prev, to: b.upTo };
     prev = b.upTo;
   }
-  return { rate: 0.5, from: 721560, to: Infinity };
+  const last = cfg.brackets[cfg.brackets.length-1];
+  return { rate: last.rate, from: prev, to: Infinity };
 }
 function yearNet(y) {
   const i = data.entries.filter(e=>e.type==='in'  && e.date.startsWith(y)).reduce((s,e)=>s+e.amount,0);
@@ -570,26 +604,40 @@ function yearNet(y) {
   return { i, o, net: i - o };
 }
 function taxEstimate(y) {
+  const cfg = cfgFor(y);
   const { net } = yearNet(y);
-  const gross = calcIncomeTax(net);
+  // דמי הביטוח מחושבים תמיד — 52% מהם ניכוי מוכר שמקטין את ההכנסה החייבת,
+  // גם אם המשתמש בחר לא לכלול את ב"ל בסכום האומדן.
+  const bl = calcBL(net, cfg);
+  const blDeduct = Math.min(Math.max(0, net), cfg.blDeductible * bl);
+  const taxable = Math.max(0, net - blDeduct);
+  const gross = calcIncomeTax(taxable, cfg);
   const pts = data.settings.points;
-  const credits = (pts === undefined || pts === null || isNaN(pts) ? 2.25 : pts) * POINT_VALUE;
+  const credits = (pts === undefined || pts === null || isNaN(pts) ? 2.25 : pts) * cfg.pointValue;
   const income = Math.max(0, gross - credits);
-  const bl = data.settings.includeBL ? calcBL(net) : 0;
-  return { net, gross, credits, income, bl, total: income + bl };
+  return { net, bl, blDeduct, taxable, gross, credits, income,
+           total: income + (data.settings.includeBL ? bl : 0), cfg };
 }
 
 function renderTax() {
   const y = taxYear();
   document.getElementById('taxYearLbl').textContent = y + (uiYear === 'all' ? ' (שנה נוכחית)' : '');
   const t = taxEstimate(y);
-  const m = marginalRate(Math.max(0, t.net));
-  document.getElementById('taxCalc').innerHTML = `
+  const cfg = t.cfg;
+  const m = marginalRate(Math.max(0, t.taxable), cfg);
+  const warn = !cfg.exact
+    ? `<div class="alert warn" style="margin:0 0 8px"><b>⚠️ אין שיעורי מס מוגדרים ל-${y}</b>החישוב מבוסס על שיעורי ${cfg.year}. הוסף את שנת ${y} ל-TAX_YEARS בקוד לקבלת אומדן מדויק.</div>`
+    : (!cfg.verified
+      ? `<div class="alert info" style="margin:0 0 8px"><b>ℹ️ שיעורי ${cfg.year} טרם אומתו</b>המדרגות, שווי נקודת הזיכוי ושיעורי ב"ל שבקוד לא נבדקו מול הפרסום הרשמי. ודא מול הרו"ח לפני הסתמכות.</div>`
+      : '');
+  document.getElementById('taxCalc').innerHTML = warn + `
     <div class="taxrow"><span>רווח נקי עד כה (${y})</span><b>${fmt(t.net)}</b></div>
+    <div class="taxrow"><span>ניכוי 52% מדמי ביטוח לאומי</span><b style="color:#4ade80">−${fmt(t.blDeduct)}</b></div>
+    <div class="taxrow"><span>הכנסה חייבת</span><b>${fmt(t.taxable)}</b></div>
     <div class="taxrow"><span>מס לפי מדרגות</span><b>${fmt(t.gross)}</b></div>
-    <div class="taxrow"><span>נקודות זיכוי (${data.settings.points} × ${POINT_VALUE.toLocaleString('he-IL')})</span><b style="color:#4ade80">−${fmt(t.credits)}</b></div>
+    <div class="taxrow"><span>נקודות זיכוי (${data.settings.points} × ${cfg.pointValue.toLocaleString('he-IL')})</span><b style="color:#4ade80">−${fmt(t.credits)}</b></div>
     <div class="taxrow"><span>מס הכנסה לתשלום</span><b>${fmt(t.income)}</b></div>
-    ${data.settings.includeBL ? `<div class="taxrow"><span>ביטוח לאומי + בריאות (אומדן)</span><b>${fmt(t.bl)}</b></div>` : ''}
+    <div class="taxrow"><span>ביטוח לאומי + בריאות (אומדן)${data.settings.includeBL?'':' — לא נכלל בסה"כ'}</span><b>${fmt(t.bl)}</b></div>
     <div class="taxrow"><span><b>סה"כ אומדן</b></span><b class="big">${fmt(t.total)}</b></div>
     <div class="taxrow"><span>מדרגה שולית נוכחית</span><b>${(m.rate*100).toFixed(0)}%</b></div>
   `;
@@ -597,7 +645,9 @@ function renderTax() {
   const ynC = yearNet(y);
   if (ynC.i > 0) {
     const zairNet = ynC.i * 0.7;
-    const zairTax = Math.max(0, calcIncomeTax(zairNet) - t.credits) + (data.settings.includeBL ? calcBL(zairNet) : 0);
+    const zairBL = calcBL(zairNet, cfg);
+    const zairTaxable = Math.max(0, zairNet - Math.min(zairNet, cfg.blDeductible * zairBL));
+    const zairTax = Math.max(0, calcIncomeTax(zairTaxable, cfg) - t.credits) + (data.settings.includeBL ? zairBL : 0);
     const diff = t.total - zairTax;
     const better = diff > 0 ? 'עסק זעיר (30% אוטומטי)' : 'הוצאות בפועל';
     const gap = Math.abs(diff);
@@ -611,10 +661,10 @@ function renderTax() {
       </div>`;
   } else { document.getElementById('zairCompare').innerHTML = ''; }
 
-  document.getElementById('brackets').innerHTML = BRACKETS.map((b,i) => {
-    const from = i===0 ? 0 : BRACKETS[i-1].upTo;
-    const cur = t.net > from && t.net <= b.upTo;
-    const label = b.upTo===Infinity ? `מעל ${fmt(721560)} (כולל מס יסף)` : `${fmt(from)} – ${fmt(b.upTo)}`;
+  document.getElementById('brackets').innerHTML = cfg.brackets.map((b,i) => {
+    const from = i===0 ? 0 : cfg.brackets[i-1].upTo;
+    const cur = t.taxable > from && t.taxable <= b.upTo;
+    const label = b.upTo===Infinity ? `מעל ${fmt(from)} (כולל מס יסף)` : `${fmt(from)} – ${fmt(b.upTo)}`;
     return `<div class="bracket ${cur?'cur':''}"><span>${label}</span><b>${(b.rate*100).toFixed(0)}%</b></div>`;
   }).join('');
 
@@ -690,17 +740,18 @@ function buildAlerts() {
   }
 
   // תקרת עוסק פטור
+  const acfg = t.cfg;
   const yIn = yearNet(year).i;
-  const pct = Math.min(100, yIn/CAP*100);
-  if (pct >= 85) alerts.push({lvl:'crit', t:'🚨 מתקרב לתקרת עוסק פטור!', b:`מחזור: ${fmt(yIn)} — ${pct.toFixed(0)}% מ-122,833 ₪. חובה לפנות למע"מ לפני חריגה, אחרת 18% מע"מ על ההפרש מהכיס.`});
+  const pct = Math.min(100, yIn/acfg.patorCap*100);
+  if (pct >= 85) alerts.push({lvl:'crit', t:'🚨 מתקרב לתקרת עוסק פטור!', b:`מחזור: ${fmt(yIn)} — ${pct.toFixed(0)}% מ-${fmt(acfg.patorCap)}. חובה לפנות למע"מ לפני חריגה, אחרת 18% מע"מ על ההפרש מהכיס.`});
   else if (pct >= 60) alerts.push({lvl:'warn', t:'⚠️ מעקב תקרת עוסק פטור', b:`מחזור: ${fmt(yIn)} — ${pct.toFixed(0)}% מהתקרה. לתכנן מעבר למורשה עם הרו"ח.`});
 
   // מדרגות מס
-  if (t.net > 0) {
-    const m = marginalRate(t.net);
-    const toNext = m.to === Infinity ? null : m.to - t.net;
+  if (t.taxable > 0) {
+    const m = marginalRate(t.taxable, acfg);
+    const toNext = m.to === Infinity ? null : m.to - t.taxable;
     if (toNext !== null && toNext <= 15000) {
-      const next = marginalRate(m.to + 1);
+      const next = marginalRate(m.to + 1, acfg);
       alerts.push({lvl:'info', t:`📊 עוד ${fmt(toNext)} רווח — מדרגת מס חדשה`, b:`אתה במדרגת ${(m.rate*100).toFixed(0)}%. מעל ${fmt(m.to)} רווח שנתי, השקלים הנוספים ימוסו ב-${(next.rate*100).toFixed(0)}%. זה רק על החלק שמעל — אף פעם לא משתלם להרוויח פחות. שווה לתזמן הוצאות מוכרות (ציוד, מנויים שנתיים) לפני סוף השנה.`});
     }
     if (t.total > 3000) alerts.push({lvl:'info', t:`💰 אומדן מס מצטבר: ${fmt(t.total)}`, b:`מומלץ להפריש בצד ~${Math.round(t.total/Math.max(1,now.getMonth()+1))} ₪ לחודש לחשבון נפרד, כדי שהדוח השנתי לא יתפוס אותך בלי נזילות.`});
@@ -1061,9 +1112,10 @@ function render() {
   document.getElementById('sum-year').innerHTML = Object.entries(byYear).sort().map(([y,v])=>`<div class="cat-sum" style="cursor:pointer" onclick="setUiYear('${y}')"><span><b>${y}</b></span><span style="color:#4ade80">+${fmt(v.i)}</span><span style="color:#ff6b6b">−${fmt(v.o)}</span><b>${fmt(v.i-v.o)}</b></div>`).join('') || '<div class="msg">אין נתונים</div>';
 
   const capY = taxYear();
+  const capCfg = cfgFor(capY);
   const yIn = yearNet(capY).i;
-  document.getElementById('capTxt').textContent = fmt(yIn) + ' / ' + fmt(CAP) + ' (' + capY + ')';
-  document.getElementById('capBar').style.width = Math.min(100, yIn/CAP*100) + '%';
+  document.getElementById('capTxt').textContent = fmt(yIn) + ' / ' + fmt(capCfg.patorCap) + ' (' + capY + ')';
+  document.getElementById('capBar').style.width = Math.min(100, yIn/capCfg.patorCap*100) + '%';
 
   buildQuick();
   renderTax();
@@ -1266,16 +1318,17 @@ async function aiScan() {
       const b64 = await blobToBase64(blob);
       const outCats = [...document.getElementById('out-cat').options].map(o=>o.value);
       const inCats  = [...document.getElementById('in-cat').options].map(o=>o.value);
-      const prompt = 'נתח את המסמך המצורף (קבלה/חשבונית/אישור/טופס מס ישראלי). החזר JSON בלבד, בלי שום טקסט נוסף ובלי markdown:\n{"kind":"receipt"או"tax_form","type":"in"או"out"אוnull,"date":"YYYY-MM-DD"אוnull,"amount_ils":מספראוnull,"amount_usd":מספראוnull,"category":מחרוזתאוnull,"doc_id":מחרוזתאוnull,"note":"תיאור קצר בעברית"}\nכללים:\n- receipt = קבלה/חיוב/תשלום. type=out לקנייה/חיוב של המשתמש, in לתקבול/משיכה לזכותו.\n- category להוצאה חייבת להיות בדיוק אחת מ: ' + JSON.stringify(outCats) + '\n- category להכנסה בדיוק אחת מ: ' + JSON.stringify(inCats) + '\n- tax_form = טופס רשמי. doc_id: "106"=טופס 106 שכר, "leida"=דמי לידה, "milu"=תגמולי מילואים, "867"=אישור מס בנקאי 867, "blz"=אישור דמי ביטוח לאומי, "loan"=אישור ריבית הלוואה, "pens"=אישור פנסיה/השתלמות, "trum"=קבלת תרומה, "rise"=אישור משיכה מפרמה.\n- קבלת תרומה = tax_form עם doc_id "trum", לא הוצאה!\n- סכום בדולר ← amount_usd. סכום בשקלים ← amount_ils.';
       const resp = await fetch(AI_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ media_type: isPdf ? 'application/pdf' : 'image/jpeg', data: b64, prompt }),
+        body: JSON.stringify({
+          media_type: isPdf ? 'application/pdf' : 'image/jpeg',
+          data: b64, out_cats: outCats, in_cats: inCats,
+        }),
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const dj = await resp.json();
-      const text = (dj.content || []).filter(c => c.type === 'text').map(c => c.text).join('') || dj.text || '';
-      renderAiResult(JSON.parse(text.replace(/```json|```/g, '').trim()));
+      // ה-Worker מחזיר JSON מובנה שנאכף על ידי ה-API — אין צורך לנקות markdown או לפרסר טקסט
+      renderAiResult(await resp.json());
     } catch(e) {
       showAiBox('<div class="alert warn"><b>⚠ הניתוח נכשל</b>נסה שוב או הזן ידנית. <button class="abtn" onclick="showAiBox(\'\')">סגור</button></div>');
     }
