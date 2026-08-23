@@ -115,12 +115,31 @@ const todayLocal = () => {
   });
   check('הקבלה נשמרה כ-Blob', !!rec && rec.blob && rec.type === 'image/jpeg', rec ? `${rec.size} bytes` : 'לא נמצאה');
 
-  // גיבוי
-  const dl = page.waitForEvent('download', { timeout: 20000 });
+  // גיבוי רגיל
   await page.click('#tb-sum');
+  let dl = page.waitForEvent('download', { timeout: 20000 });
   await page.click('button:has-text("גבה הכל")');
+  await page.waitForSelector('#pwmodal:not(.hidden)');
+  await page.click('#pw-plain');
   await (await dl).saveAs(path.join(TMP, 'backup.zip'));
-  check('קובץ הגיבוי ירד', fs.statSync(path.join(TMP, 'backup.zip')).size > 500);
+  check('גיבוי רגיל ירד', fs.statSync(path.join(TMP, 'backup.zip')).size > 500);
+
+  // גיבוי מוצפן
+  dl = page.waitForEvent('download', { timeout: 20000 });
+  await page.click('button:has-text("גבה הכל")');
+  await page.waitForSelector('#pwmodal:not(.hidden)');
+  await page.fill('#pw-input', 'סיסמה-לבדיקה-2026');
+  await page.fill('#pw-input2', 'לא-אותה-סיסמה');
+  await page.click('#pwmodal button:has-text("אישור")');
+  check('סיסמאות שאינן תואמות נחסמות', (await page.textContent('#pw-err')).includes('אינן זהות'));
+  await page.fill('#pw-input2', 'סיסמה-לבדיקה-2026');
+  await page.click('#pwmodal button:has-text("אישור")');
+  const encFile = await dl;
+  await encFile.saveAs(path.join(TMP, 'backup.hhbak'));
+  const encBytes = fs.readFileSync(path.join(TMP, 'backup.hhbak'));
+  check('גיבוי מוצפן ירד', encFile.suggestedFilename().endsWith('.hhbak'));
+  check('הקובץ המוצפן נושא חתימת HHBAK1', encBytes.subarray(0, 6).toString() === 'HHBAK1');
+  check('הקובץ המוצפן אינו ZIP קריא', encBytes.subarray(6, 10).toString() !== 'PK');
 
   // מנוע המס
   const tax = await page.evaluate(() => {
@@ -150,10 +169,26 @@ const todayLocal = () => {
   check('מכשיר חדש מתחיל ריק', await page.evaluate(() => data.entries.length) === 0);
 
   await page.click('#tb-sum');
-  const chooser = page.waitForEvent('filechooser');
+
+  // סיסמה שגויה חייבת להיכשל, ולא לפגוע בנתונים
+  let chooser = page.waitForEvent('filechooser');
   await page.click('button:has-text("שחזר מגיבוי")');
-  await (await chooser).setFiles(path.join(TMP, 'backup.zip'));
-  await page.waitForTimeout(2500);
+  await (await chooser).setFiles(path.join(TMP, 'backup.hhbak'));
+  await page.waitForSelector('#pwmodal:not(.hidden)');
+  await page.fill('#pw-input', 'סיסמה-לא-נכונה');
+  await page.click('#pwmodal button:has-text("אישור")');
+  await page.waitForTimeout(1500);
+  check('סיסמה שגויה נדחית', (await page.textContent('#status')).includes('שגויה'));
+  check('סיסמה שגויה לא מחקה נתונים', await page.evaluate(() => data.entries.length) === 0);
+
+  // ועכשיו עם הסיסמה הנכונה
+  chooser = page.waitForEvent('filechooser');
+  await page.click('button:has-text("שחזר מגיבוי")');
+  await (await chooser).setFiles(path.join(TMP, 'backup.hhbak'));
+  await page.waitForSelector('#pwmodal:not(.hidden)');
+  await page.fill('#pw-input', 'סיסמה-לבדיקה-2026');
+  await page.click('#pwmodal button:has-text("אישור")');
+  await page.waitForTimeout(3000);
 
   const after = await page.evaluate(async () => {
     const e = data.entries.find(x => x.hasReceipt);

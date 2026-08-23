@@ -75,6 +75,11 @@
   .st.yes { background: #14351f; color: #4ade80; }
   .footer { position: fixed; bottom: 0; right: 0; left: 0; padding: 10px 14px; background: #1a2130; box-shadow: 0 -2px 10px rgba(0,0,0,.5); z-index: 20; }
   .hidden { display: none !important; }
+  #pwmodal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; }
+  #pwmodal .pwbox { background: #1a2130; border-radius: 12px; padding: 16px; width: 100%; max-width: 360px; }
+  #pwmodal b { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
+  #pwmodal input { margin-top: 8px; }
+  #pw-err { color: #ff6b6b; font-size: 12px; min-height: 15px; margin-top: 6px; }
   .yearbar { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
   .yearbar label { margin: 0; font-size: 11.5px; color: #8b93a7; white-space: nowrap; }
   .yearbar select { padding: 6px 8px; font-size: 13px; background: #232b3d; border-color: #3a4560; }
@@ -280,6 +285,19 @@
   </div>
   <button class="btn" style="margin-top:8px;background:#4ade80;color:#0f1420" onclick="buildYearPackage()">📦 חבילה שנתית מלאה לרו"ח (דוח + קבלות + טפסים)</button>
   <div class="status" id="status"></div>
+</div>
+
+<div id="pwmodal" class="hidden">
+  <div class="pwbox">
+    <b id="pw-title"></b>
+    <div id="pw-desc" class="disc" style="margin-top:0"></div>
+    <input type="password" id="pw-input" placeholder="סיסמה" autocomplete="off">
+    <input type="password" id="pw-input2" placeholder="אימות סיסמה" autocomplete="off">
+    <div id="pw-err"></div>
+    <button class="btn" onclick="pwSubmit()">אישור</button>
+    <button class="btn sec" id="pw-plain" onclick="pwResolve(null)">בלי הצפנה</button>
+    <button class="btn sec" onclick="pwResolve(false)">ביטול</button>
+  </div>
 </div>
 
 <div id="viewer" class="hidden" onclick="closeViewer()">
@@ -1238,6 +1256,94 @@ async function buildYearPackage() {
 /* ===== גיבוי ושחזור מלא =====
    ZIP הכולל data.json (רשומות + הגדרות + מניפסט קבצים) ותיקיית files/ עם כל ה-Blobs.
    זהו קובץ הביטוח: הוא משחזר את המצב המלא, גם במכשיר אחר. */
+/* ===== הצפנת גיבויים =====
+   קובץ הגיבוי מכיל את כל מסמכי המס — טופס 106, אישורי בנק, קבלות. הוא נועד
+   לצאת מהמכשיר (דרייב, מייל), ולכן הוא הנקודה החשופה ביותר. מוצפן AES-GCM-256
+   עם מפתח שנגזר מסיסמה ב-PBKDF2. הסיסמה אינה נשמרת בשום מקום:
+   אם היא אובדת, הגיבוי אינו ניתן לשחזור.
+
+   מבנה הקובץ:
+     0..5    "HHBAK1"        חתימה וגרסת פורמט
+     6..21   salt (16)       מלח ל-PBKDF2
+     22..33  iv (12)         וקטור אתחול ל-AES-GCM
+     34..37  iterations      uint32 big-endian
+     38..    ciphertext      כולל תג האימות של GCM
+*/
+const PBKDF2_ITER = 600000;              // המלצת OWASP ל-PBKDF2-SHA256
+const BAK_MAGIC = 'HHBAK1';
+const HEADER_LEN = 6 + 16 + 12 + 4;
+
+async function deriveKey(password, salt, iterations) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptBlob(blob, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(password, salt, PBKDF2_ITER);
+  const ct   = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, await blob.arrayBuffer());
+  const iterBuf = new Uint8Array(4);
+  new DataView(iterBuf.buffer).setUint32(0, PBKDF2_ITER, false);
+  return new Blob([new TextEncoder().encode(BAK_MAGIC), salt, iv, iterBuf, ct], { type: 'application/octet-stream' });
+}
+async function isEncryptedBackup(file) {
+  const head = new Uint8Array(await file.slice(0, 6).arrayBuffer());
+  return new TextDecoder().decode(head) === BAK_MAGIC;
+}
+/* מחזיר Blob של ה-ZIP המקורי, או זורק אם הסיסמה שגויה או הקובץ פגום.
+   AES-GCM מאמת את התוכן, כך שסיסמה שגויה נכשלת ולא מחזירה זבל. */
+async function decryptBlob(file, password) {
+  const buf  = new Uint8Array(await file.arrayBuffer());
+  if (buf.length <= HEADER_LEN) throw new Error('קובץ פגום');
+  const salt = buf.slice(6, 22);
+  const iv   = buf.slice(22, 34);
+  const iter = new DataView(buf.buffer, buf.byteOffset + 34, 4).getUint32(0, false);
+  if (iter < 1000 || iter > 5000000) throw new Error('קובץ פגום');
+  const key  = await deriveKey(password, salt, iter);
+  const pt   = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, buf.slice(HEADER_LEN));
+  return new Blob([pt], { type: 'application/zip' });
+}
+
+/* ===== מודאל סיסמה ===== */
+let _pwResolve = null, _pwConfirm = false;
+function askPassword({ title, desc, confirm = false, allowPlain = false }) {
+  return new Promise(res => {
+    _pwResolve = res; _pwConfirm = confirm;
+    document.getElementById('pw-title').textContent = title;
+    document.getElementById('pw-desc').textContent = desc || '';
+    document.getElementById('pw-err').textContent = '';
+    const a = document.getElementById('pw-input'), b = document.getElementById('pw-input2');
+    a.value = ''; b.value = '';
+    b.classList.toggle('hidden', !confirm);
+    document.getElementById('pw-plain').classList.toggle('hidden', !allowPlain);
+    document.getElementById('pwmodal').classList.remove('hidden');
+    setTimeout(() => a.focus(), 50);
+  });
+}
+/* null = בלי הצפנה · false = ביטול · מחרוזת = סיסמה */
+function pwResolve(v) {
+  document.getElementById('pwmodal').classList.add('hidden');
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-input2').value = '';
+  const r = _pwResolve; _pwResolve = null;
+  if (r) r(v);
+}
+function pwSubmit() {
+  const a = document.getElementById('pw-input').value;
+  const b = document.getElementById('pw-input2').value;
+  const err = document.getElementById('pw-err');
+  if (a.length < 8) { err.textContent = 'סיסמה קצרה מדי — לפחות 8 תווים'; return; }
+  if (_pwConfirm && a !== b) { err.textContent = 'הסיסמאות אינן זהות'; return; }
+  pwResolve(a);
+}
+document.getElementById('pw-input2').addEventListener('keydown', e => { if (e.key === 'Enter') pwSubmit(); });
+document.getElementById('pw-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (_pwConfirm) document.getElementById('pw-input2').focus(); else pwSubmit();
+});
+
 const BACKUP_FORMAT = 1;
 async function backupAll() {
   if (!_db) { setStatus('⚠ אין אחסון לגבות'); return; }
@@ -1264,20 +1370,44 @@ async function backupAll() {
       `נוצר: ${new Date().toLocaleString('he-IL')}\n` +
       `${data.entries.length} רשומות, ${manifest.length} קבצים.\n`);
 
-    downloadBlob(await zip.generateAsync({type:'blob', compression:'STORE'}), `gibuy-hanhac-${localISO()}.zip`);
+    const pw = await askPassword({
+      title: '🔒 הצפנת הגיבוי',
+      desc: 'הקובץ יכיל את כל מסמכי המס והקבלות שלך. אם הוא ייצא מהמכשיר — לדרייב, למייל — כדאי שיהיה מוצפן. שמור את הסיסמה במקום בטוח: בלעדיה אי אפשר לשחזר.',
+      confirm: true, allowPlain: true,
+    });
+    if (pw === false) { setStatus('הגיבוי בוטל'); return; }
+
+    let blob = await zip.generateAsync({type:'blob', compression:'STORE'});
+    let name = `gibuy-hanhac-${localISO()}.zip`;
+    if (pw) {
+      setStatus('מצפין...');
+      blob = await encryptBlob(blob, pw);
+      name = `gibuy-hanhac-${localISO()}.hhbak`;
+    }
+    downloadBlob(blob, name);
     data.lastBackup = Date.now();
     await DB.setMeta('lastBackup', data.lastBackup);
     render();
-    setStatus(`✓ גובו ${data.entries.length} רשומות ו-${manifest.length} קבצים`);
+    setStatus(`✓ ${pw?'גיבוי מוצפן':'גיבוי'}: ${data.entries.length} רשומות, ${manifest.length} קבצים`);
   } catch(e) { setStatus('⚠ הגיבוי נכשל'); }
 }
 async function restoreAll() {
   if (!_db) { setStatus('⚠ אין אחסון'); return; }
-  pickFile('.zip', async f => {
+  pickFile('.zip,.hhbak', async f => {
     if (!confirm('שחזור מגיבוי ימחק את כל הנתונים הנוכחיים ויחליף אותם בתוכן הקובץ.\n\nלהמשיך?')) return;
+    let src = f;
+    try {
+      if (await isEncryptedBackup(f)) {
+        const pw = await askPassword({ title: '🔒 גיבוי מוצפן', desc: 'הזן את הסיסמה שבה הצפנת את הקובץ.' });
+        if (pw === false || pw === null) { setStatus('השחזור בוטל'); return; }
+        setStatus('מפענח...');
+        try { src = await decryptBlob(f, pw); }
+        catch (e) { setStatus('⚠ סיסמה שגויה או קובץ פגום'); return; }
+      }
+    } catch (e) { setStatus('⚠ לא ניתן לקרוא את הקובץ'); return; }
     setStatus('קורא גיבוי...');
     try {
-      const zip = await JSZip.loadAsync(f);
+      const zip = await JSZip.loadAsync(src);
       const jsonFile = zip.file('data.json');
       if (!jsonFile) { setStatus('⚠ זה לא קובץ גיבוי תקין'); return; }
       const payload = JSON.parse(await jsonFile.async('string'));
