@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>הנה"ח FINAL — אוריאל פינטו</title>
+<!-- Content-Security-Policy: default-src 'none' חוסם כל משאב חיצוני.
+     המשמעות המעשית: גם אם קוד זדוני יצליח לרוץ בדף, connect-src מונע ממנו
+     לשלוח את מסמכי המס לשרת חיצוני. form-action 'none' חוסם שליחת טפסים.
+     אם מגדירים AI_ENDPOINT — יש להוסיף את מקור ה-Worker ל-connect-src. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1a2130">
 <!-- הוספה למסך הבית: משפרת משמעותית את הסיכוי שהדפדפן ישמור על האחסון -->
