@@ -1,0 +1,13 @@
+{
+  "name": "hanhac-uriel-pinto",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
