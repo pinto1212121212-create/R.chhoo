@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8000",
-    "test": "node test/e2e.mjs"
+    "test": "node test/e2e.mjs",
+    "test:cloud": "node test/rules.mjs && node test/cloud.mjs",
+    "emulators": "cd firebase && npx firebase-tools emulators:start --project demo-hanhac --only auth,firestore,storage"
   },
   "devDependencies": {
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "firebase-tools": "^15.28.1"
   }
 }

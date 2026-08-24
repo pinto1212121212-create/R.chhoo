@@ -124,7 +124,8 @@ const todayLocal = () => {
   await (await dl).saveAs(path.join(TMP, 'backup.zip'));
   check('גיבוי רגיל ירד', fs.statSync(path.join(TMP, 'backup.zip')).size > 500);
 
-  // גיבוי מוצפן
+  // גיבוי מוצפן — להמתין שהמודאל ייסגר לפני שפותחים אותו שוב
+  await page.waitForSelector('#pwmodal', { state: 'hidden' });
   dl = page.waitForEvent('download', { timeout: 20000 });
   await page.click('button:has-text("גבה הכל")');
   await page.waitForSelector('#pwmodal:not(.hidden)');

@@ -8,7 +8,7 @@
      המשמעות המעשית: גם אם קוד זדוני יצליח לרוץ בדף, connect-src מונע ממנו
      לשלוח את מסמכי המס לשרת חיצוני. form-action 'none' חוסם שליחת טפסים.
      אם מגדירים AI_ENDPOINT — יש להוסיף את מקור ה-Worker ל-connect-src. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1a2130">
 <!-- הוספה למסך הבית: משפרת משמעותית את הסיכוי שהדפדפן ישמור על האחסון -->
@@ -280,6 +280,12 @@
       <button class="btn sec" onclick="restoreAll()">♻️ שחזר מגיבוי</button>
       <div class="disc">הגיבוי כולל את כל הרשומות, הקבלות, הטפסים וההגדרות — קובץ אחד שאפשר לשמור בדרייב או לשלוח לעצמך במייל. השחזור מחזיר הכל בדיוק כפי שהיה, גם במכשיר אחר.</div>
     </div>
+
+    <h3>☁️ סנכרון ענן</h3>
+    <div class="panel">
+      <div id="cloud-panel"></div>
+      <div class="disc">הצפנה מקצה לקצה: כל רשומה וכל קובץ מוצפנים במכשיר לפני העלייה. Google מאחסן בייטים שאין לו מפתח אליהם. סיסמת ההצפנה נפרדת מחשבון Google ולעולם לא נשלחת לשרת.</div>
+    </div>
   </section>
 </main>
 
@@ -419,7 +425,7 @@ const safeName = s => String(s).replace(/[^א-תa-zA-Z0-9 ._-]/g, '-').slice(0, 
    files   : keyPath 'key' — קבלות/טפסים/מסמכים כ-Blob
    meta    : keyPath 'k'   — הגדרות, צ'קליסט, סטטוס שנים
    ========================================================================= */
-const DB_NAME = 'hh-uriel', DB_VERSION = 1;
+const DB_NAME = 'hh-uriel', DB_VERSION = 2;
 let _db = null;
 
 function openDB() {
@@ -436,8 +442,25 @@ function openDB() {
         db.createObjectStore('files', { keyPath: 'key' });
         db.createObjectStore('meta',  { keyPath: 'k' });
       }
+      // --- גרסה 2: שדות סנכרון ---
+      // updatedAt מכריע התנגשויות בין מכשירים, ו-deleted הוא tombstone:
+      // מחיקה חייבת להתפשט למכשירים אחרים, ולכן היא מסומנת ולא מוסרת.
+      if (ev.oldVersion < 2 && ev.oldVersion >= 1) {
+        const st = req.transaction.objectStore('entries');
+        st.openCursor().onsuccess = e => {
+          const c = e.target.result;
+          if (!c) return;
+          const v = c.value;
+          if (v.updatedAt === undefined) {
+            v.updatedAt = v.createdAt || Date.now();
+            v.deleted = false;
+            c.update(v);
+          }
+          c.continue();
+        };
+      }
       // --- מיגרציות עתידיות ---
-      // if (ev.oldVersion < 2) { ... } ← להוסיף כאן, ולהעלות את DB_VERSION
+      // if (ev.oldVersion < 3) { ... } ← להוסיף כאן, ולהעלות את DB_VERSION
     };
     req.onsuccess = () => {
       _db = req.result;
@@ -516,7 +539,9 @@ async function load() {
     return;
   }
   try {
-    data.entries = await DB.allEntries();
+    // data.entries מחזיק רשומות חיות בלבד; ה-tombstones נשארים ב-DB לצורך הסנכרון
+    const all = await DB.allEntries();
+    data.entries = all.filter(e => !e.deleted);
     data.settings   = Object.assign(data.settings, await DB.getMeta('settings', {}) || {});
     data.yearStatus = await DB.getMeta('yearStatus', {}) || {};
     data.docs       = await DB.getMeta('docs', {}) || {};
@@ -524,7 +549,7 @@ async function load() {
     data.docFiles   = await DB.getMeta('docFiles', {}) || {};
     data.extraFiles = await DB.getMeta('extraFiles', []) || [];
     data.lastBackup = await DB.getMeta('lastBackup', null);
-    _lastId = data.entries.reduce((m, e) => Math.max(m, e.id || 0), 0);
+    _lastId = all.reduce((m, e) => Math.max(m, e.id || 0), 0);
   } catch (e) {
     dbError('קריאת הנתונים נכשלה: ' + (e && e.message ? e.message : e));
   }
@@ -547,7 +572,9 @@ async function save() {
       settings: data.settings, yearStatus: data.yearStatus, docs: data.docs,
       dismissed: data.dismissed, docFiles: data.docFiles, extraFiles: data.extraFiles,
     });
+    await touchMeta();
     setStatus('✓ נשמר');
+    queueSync();
   } catch (e) { setStatus('⚠ השמירה נכשלה'); }
 }
 
@@ -1018,7 +1045,7 @@ async function addEntry(type) {
     cat: document.getElementById(type+'-cat').value,
     note: document.getElementById(type+'-note').value,
     hasReceipt: !!staged[type],
-    createdAt: Date.now(),
+    createdAt: Date.now(), updatedAt: Date.now(), deleted: false,
   };
   try {
     if (staged[type]) {
@@ -1030,6 +1057,7 @@ async function addEntry(type) {
   } catch (e) { setStatus('⚠ השמירה נכשלה — נסה שוב'); return; }
 
   clearStaged(type);
+  queueSync();
   document.getElementById(type+'-amt').value = '';
   document.getElementById(type+'-usd').value = '';
   document.getElementById(type+'-note').value = '';
@@ -1043,7 +1071,7 @@ async function attachToExisting(id) {
       if (!blob) return;
       await DB.putFile(RK(id), blob, f.name);
       const e = data.entries.find(x=>x.id===id);
-      if (e) { e.hasReceipt = true; await DB.putEntry(e); }
+      if (e) { e.hasReceipt = true; e.updatedAt = Date.now(); await DB.putEntry(e); }
       render(); setStatus('✓ קבלה נשמרה');
     } catch(e) { setStatus('⚠ שגיאה בשמירה'); }
   });
@@ -1053,16 +1081,21 @@ async function removeReceipt() {
   const id = viewing;
   try { await DB.delFile(RK(id)); } catch(e) {}
   const e = data.entries.find(x=>x.id===id);
-  if (e) { e.hasReceipt = false; try { await DB.putEntry(e); } catch(err) {} }
+  if (e) { e.hasReceipt = false; e.updatedAt = Date.now(); try { await DB.putEntry(e); } catch(err) {} }
   closeViewer(); render(); setStatus('✓ הקבלה נמחקה');
 }
 async function delEntry(id) {
   const e = data.entries.find(x=>x.id===id);
   if (e && !confirm('למחוק את השורה "'+e.cat+'" על סך '+fmt(e.amount)+'?')) return;
   if (e && e.hasReceipt) { try { await DB.delFile(RK(id)); } catch(err) {} }
-  try { await DB.delEntry(id); } catch(err) { setStatus('⚠ המחיקה נכשלה'); return; }
+  // מחיקה מסומנת ולא מוסרת, אחרת היא לא תתפשט למכשירים אחרים בסנכרון
+  try {
+    if (e) await DB.putEntry({ ...e, deleted: true, hasReceipt: false, updatedAt: Date.now() });
+    else await DB.delEntry(id);
+  } catch(err) { setStatus('⚠ המחיקה נכשלה'); return; }
   data.entries = data.entries.filter(x => x.id !== id);
   render(); setStatus('✓ נמחק');
+  queueSync();
 }
 
 async function uploadDocFile(docId) {
@@ -1152,6 +1185,7 @@ function render() {
   renderDocs();
   buildAlerts();
   renderStorageInfo();
+  renderCloud();
 }
 
 function showTab(t, el) {
@@ -1512,7 +1546,8 @@ async function aiAddEntry() {
     id, type: p.type, amount: p.amount,
     date: (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) ? p.date : localISO(),
     cat: valid.includes(p.category) ? p.category : 'אחר',
-    note: p.note || '', hasReceipt: true, createdAt: Date.now(),
+    note: p.note || '', hasReceipt: true,
+    createdAt: Date.now(), updatedAt: Date.now(), deleted: false,
   };
   try { await DB.putFile(RK(id), aiPending.blob, 'קבלה (AI)'); }
   catch(e) { entry.hasReceipt = false; }
@@ -1535,10 +1570,394 @@ async function aiAttachDoc(docId) {
   } catch(e) { setStatus('⚠ שגיאה בשמירה'); }
 }
 
+/* =========================================================================
+   סנכרון ענן בהצפנה מקצה לקצה
+   ─────────────────────────────────────────────────────────────────────────
+   Firebase מאחסן, אך לעולם אינו יכול לקרוא. כל רשומה וכל קובץ מוצפנים
+   במכשיר לפני העלייה, והמפתח אינו נשלח לשרת בשום שלב.
+
+   ניהול מפתחות — שתי שכבות:
+     DEK   מפתח אקראי 256 ביט שמצפין את התוכן בפועל
+     KEK   מפתח שנגזר מסיסמת ההצפנה שלך (PBKDF2-600k)
+   ב-Firestore נשמר רק ה-DEK כשהוא עטוף ב-KEK. שינוי סיסמה עוטף מחדש מפתח
+   אחד, במקום להצפין מחדש את כל הארכיון.
+
+   ⚠️ סיסמת ההצפנה שונה מחשבון Google. Google מאמת מי אתה; סיסמת ההצפנה
+   קובעת מה אפשר לקרוא, ולעולם לא עוזבת את המכשיר.
+
+   סנכרון: last-write-wins לפי updatedAt, עם tombstones למחיקות.
+   ========================================================================= */
+
+/* מ-Firebase Console ← Project settings ← Your apps. הערכים אינם סוד —
+   האבטחה נשענת על כללי האבטחה ועל ההצפנה, לא על הסתרתם. */
+const CLOUD = {
+  apiKey:     '',   // "AIza..."
+  authDomain: '',   // "hanhac-uriel.firebaseapp.com"
+  projectId:  '',   // "hanhac-uriel"
+  bucket:     '',   // "hanhac-uriel.firebasestorage.app"
+};
+const cloudOn = () => !!(CLOUD.apiKey && CLOUD.projectId && CLOUD.bucket);
+
+/* CLOUD.emulator מפנה את הקריאות לאמולטור המקומי. לפיתוח ולבדיקות בלבד —
+   בייצור הוא ריק והכתובות הן של Google. */
+const FS_HOST = () => CLOUD.emulator ? `${CLOUD.emulator.firestore}/v1` : 'https://firestore.googleapis.com/v1';
+const ST_HOST = () => CLOUD.emulator ? `${CLOUD.emulator.storage}/v0`   : 'https://firebasestorage.googleapis.com/v0';
+const FS_BASE = () => `${FS_HOST()}/projects/${CLOUD.projectId}/databases/(default)/documents`;
+const ST_BASE = () => `${ST_HOST()}/b/${CLOUD.bucket}/o`;
+
+let cloud = { user: null, dek: null, syncing: false, lastSync: null, err: null };
+let _fbAuth = null;
+
+/* ===== base64 בטוח גם לקבצים גדולים (spread נשבר על מערכים ארוכים) ===== */
+function toB64(buf) {
+  const b = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function fromB64(s) {
+  const bin = atob(s), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/* ===== הצפנה עם ה-DEK ===== */
+async function encBytes(bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cloud.dek, bytes);
+  return { iv: toB64(iv), ct: toB64(ct) };
+}
+async function decBytes(iv, ct) {
+  return new Uint8Array(await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromB64(iv) }, cloud.dek, fromB64(ct)));
+}
+const encObj = o => encBytes(new TextEncoder().encode(JSON.stringify(o)));
+const decObj = async (iv, ct) => JSON.parse(new TextDecoder().decode(await decBytes(iv, ct)));
+
+/* ===== המרות Firestore REST ===== */
+const fsVal = v =>
+  typeof v === 'string'  ? { stringValue: v } :
+  typeof v === 'boolean' ? { booleanValue: v } :
+  typeof v === 'number'  ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v }) :
+  { nullValue: null };
+const fsDoc = o => ({ fields: Object.fromEntries(
+  Object.entries(o).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => [k, fsVal(v)])) });
+const unVal = v =>
+  'stringValue'  in v ? v.stringValue :
+  'integerValue' in v ? Number(v.integerValue) :
+  'doubleValue'  in v ? v.doubleValue :
+  'booleanValue' in v ? v.booleanValue : null;
+const unDoc = d => Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, unVal(v)]));
+
+/* ===== קריאות מאומתות ===== */
+async function idToken() {
+  if (!cloud.user) throw new Error('לא מחובר');
+  return cloud.user.getIdToken();   // ה-SDK מרענן לבד כשצריך
+}
+async function fsGet(path) {
+  const r = await fetch(`${FS_BASE()}/${path}`, { headers: { Authorization: `Bearer ${await idToken()}` } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('Firestore ' + r.status);
+  return unDoc(await r.json());
+}
+async function fsPut(path, obj) {
+  const r = await fetch(`${FS_BASE()}/${path}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${await idToken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(fsDoc(obj)),
+  });
+  if (!r.ok) throw new Error('Firestore ' + r.status + ' בכתיבה ל-' + path);
+}
+/* מושך אוסף שלם. המסמכים קטנים (מטא-דאטה מוצפן), ובקנה מידה אישי זה
+   פשוט ועמיד יותר מ-runQuery שדורש אינדקסים. */
+async function fsList(coll) {
+  const out = [];
+  let pageToken = '';
+  do {
+    const url = `${FS_BASE()}/${coll}?pageSize=300${pageToken ? '&pageToken=' + pageToken : ''}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${await idToken()}` } });
+    if (r.status === 404) return out;
+    if (!r.ok) throw new Error('Firestore ' + r.status);
+    const d = await r.json();
+    (d.documents || []).forEach(doc => out.push({ id: doc.name.split('/').pop(), ...unDoc(doc) }));
+    pageToken = d.nextPageToken || '';
+  } while (pageToken);
+  return out;
+}
+async function stPut(name, bytes) {
+  const r = await fetch(`${ST_BASE()}?uploadType=media&name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await idToken()}`, 'Content-Type': 'application/octet-stream' },
+    body: bytes,
+  });
+  if (!r.ok) throw new Error('Storage ' + r.status);
+}
+async function stGet(name) {
+  const r = await fetch(`${ST_BASE()}/${encodeURIComponent(name)}?alt=media`, {
+    headers: { Authorization: `Bearer ${await idToken()}` } });
+  if (!r.ok) return null;
+  return new Uint8Array(await r.arrayBuffer());
+}
+async function stDel(name) {
+  await fetch(`${ST_BASE()}/${encodeURIComponent(name)}`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${await idToken()}` } }).catch(() => {});
+}
+
+/* ===== המפתח העטוף ===== */
+const keyPath = () => `users/${cloud.user.uid}/keys/dek`;
+
+async function deriveKek(pass, salt, iter) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey']);
+}
+async function createDek(pass) {
+  const dek = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const kek = await deriveKek(pass, salt, PBKDF2_ITER);
+  const wrapped = await crypto.subtle.wrapKey('raw', dek, kek, { name: 'AES-GCM', iv });
+  await fsPut(keyPath(), { salt: toB64(salt), iv: toB64(iv), wrapped: toB64(wrapped),
+                           iterations: PBKDF2_ITER, version: 1, updatedAt: Date.now() });
+  return dek;
+}
+/* זורק אם הסיסמה שגויה — תג האימות של GCM מוודא זאת, אין פענוח לזבל */
+async function openDek(rec, pass) {
+  const kek = await deriveKek(pass, fromB64(rec.salt), rec.iterations || PBKDF2_ITER);
+  return crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), kek,
+    { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
+    false, ['encrypt', 'decrypt']);   // לא-ניתן-לייצוא: לא ניתן לחלץ אותו מהדפדפן
+}
+
+/* ===== מנוע הסנכרון =====
+   דוחף כל רשומה שהשתנתה מאז הסנכרון האחרון, מושך את מה שחדש בענן,
+   וממזג לפי updatedAt. מחיקות מתפשטות כ-tombstones. */
+const META_KEYS = ['settings', 'yearStatus', 'docs', 'dismissed', 'docFiles', 'extraFiles'];
+
+async function syncNow(silent) {
+  if (!cloudOn() || !cloud.user || !cloud.dek || cloud.syncing) return;
+  cloud.syncing = true; cloud.err = null;
+  renderCloud();
+  const uid = cloud.user.uid;
+  let pushed = 0, pulled = 0;
+  try {
+    const lastPush = await DB.getMeta('cloudLastPush', 0);
+    const now = Date.now();
+
+    // ── רשומות: דחיפה ──
+    const localAll = await DB.allEntries();
+    for (const e of localAll) {
+      if ((e.updatedAt || 0) <= lastPush) continue;
+      const { id, ...rest } = e;
+      const { iv, ct } = await encObj(rest);
+      await fsPut(`users/${uid}/entries/${id}`, { iv, ct, updatedAt: e.updatedAt, deleted: !!e.deleted });
+      pushed++;
+    }
+
+    // ── רשומות: משיכה ומיזוג ──
+    const byId = new Map(localAll.map(e => [String(e.id), e]));
+    for (const doc of await fsList(`users/${uid}/entries`)) {
+      const local = byId.get(doc.id);
+      if (local && (local.updatedAt || 0) >= doc.updatedAt) continue;   // המקומי עדכני או זהה
+      const rest = await decObj(doc.iv, doc.ct);
+      await DB.putEntry({ ...rest, id: Number(doc.id), updatedAt: doc.updatedAt, deleted: !!doc.deleted });
+      pulled++;
+    }
+
+    // ── הגדרות וצ'קליסט ──
+    // נקראות תחילה, כדי לדעת אם בכלל קיים עותק בענן. בלי זה סנכרון ראשון
+    // לא היה דוחף אותן לעולם: metaUpdatedAt ו-lastPush מתחילים שניהם ב-0,
+    // וההשוואה 0 > 0 לעולם אינה נכונה.
+    const metaUpdated = await DB.getMeta('metaUpdatedAt', 0);
+    const remoteMeta = await fsGet(`users/${uid}/meta/state`);
+    if (remoteMeta && remoteMeta.updatedAt > metaUpdated) {
+      const obj = await decObj(remoteMeta.iv, remoteMeta.ct);
+      META_KEYS.forEach(k => { if (obj[k] !== undefined) data[k] = obj[k]; });
+      await DB.setMetaMany(Object.fromEntries(META_KEYS.map(k => [k, data[k]])));
+      await DB.setMeta('metaUpdatedAt', remoteMeta.updatedAt);
+      pulled++;
+    } else if (!remoteMeta || metaUpdated > remoteMeta.updatedAt) {
+      const stamp = metaUpdated || Date.now();
+      const { iv, ct } = await encObj(Object.fromEntries(META_KEYS.map(k => [k, data[k]])));
+      await fsPut(`users/${uid}/meta/state`, { iv, ct, updatedAt: stamp });
+      await DB.setMeta('metaUpdatedAt', stamp);
+      pushed++;
+    }
+
+    // ── קבצים: דחיפה של חדשים ──
+    const remoteFiles = new Map((await fsList(`users/${uid}/files`)).map(f => [f.id, f]));
+    for (const rec of await DB.allFiles()) {
+      if (remoteFiles.has(rec.key)) continue;
+      const bytes = new Uint8Array(await rec.blob.arrayBuffer());
+      const { iv, ct } = await encBytes(bytes);
+      await stPut(`users/${uid}/files/${rec.key}`, fromB64(ct));
+      await fsPut(`users/${uid}/files/${rec.key}`, {
+        iv, ct: (await encObj({ name: rec.name || '', type: rec.blob.type })).ct,
+        updatedAt: rec.ts || Date.now(), size: rec.blob.size, deleted: false,
+      });
+      pushed++;
+    }
+
+    // ── קבצים: משיכה של חסרים ──
+    for (const [key, meta] of remoteFiles) {
+      if (meta.deleted) continue;
+      if (await DB.getFile(key)) continue;
+      const enc = await stGet(`users/${uid}/files/${key}`);
+      if (!enc) continue;
+      const plain = await decBytes(meta.iv, toB64(enc));
+      let info = { name: '', type: 'application/octet-stream' };
+      try { info = await decObj(meta.iv, meta.ct); } catch (e) {}
+      await DB.putFile(key, new Blob([plain], { type: info.type || 'application/octet-stream' }), info.name);
+      pulled++;
+    }
+
+    await DB.setMeta('cloudLastPush', now);
+    await DB.setMeta('cloudLastSync', now);
+    cloud.lastSync = now;
+    if (pulled) { await load(); return; }          // load() כבר קורא ל-render
+    if (!silent) setStatus(`☁️ סונכרן — ${pushed} נשלחו, ${pulled} התקבלו`);
+  } catch (e) {
+    cloud.err = e && e.message ? e.message : String(e);
+    if (!silent) setStatus('⚠ הסנכרון נכשל: ' + cloud.err);
+  } finally {
+    cloud.syncing = false;
+    renderCloud();
+  }
+}
+
+/* סנכרון אוטומטי אחרי שינוי, עם השהיה כדי לא לרוץ על כל הקלדה */
+let _syncTimer = null;
+function queueSync() {
+  if (!cloudOn() || !cloud.user || !cloud.dek) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => syncNow(true), 3000);
+}
+/* כל שינוי בהגדרות או בצ'קליסט מסומן בזמן, כדי שהמיזוג יידע מי עדכני */
+const touchMeta = () => DB.setMeta('metaUpdatedAt', Date.now());
+
+/* ===== התחברות ===== */
+/* ספריות Firebase (167KB) נטענות רק אם הענן מוגדר בפועל.
+   מי שמשתמש באפליקציה מקומית לא משלם עליהן כלום. */
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = src; el.onload = res; el.onerror = () => rej(new Error('טעינת ' + src + ' נכשלה'));
+    document.head.appendChild(el);
+  });
+}
+async function initCloud() {
+  if (!cloudOn()) return;
+  try {
+    if (typeof firebase === 'undefined') {
+      await loadScript('vendor/firebase-app-compat.js');
+      await loadScript('vendor/firebase-auth-compat.js');
+    }
+    firebase.initializeApp({
+      apiKey: CLOUD.apiKey, authDomain: CLOUD.authDomain,
+      projectId: CLOUD.projectId, storageBucket: CLOUD.bucket,
+    });
+    _fbAuth = firebase.auth();
+    await _fbAuth.getRedirectResult().catch(() => {});
+    _fbAuth.onAuthStateChanged(async u => {
+      cloud.user = u;
+      if (u) {
+        const cached = await DB.getMeta('cloudDek', null);
+        if (cached) { cloud.dek = cached; syncNow(true); }
+      } else {
+        cloud.dek = null;
+      }
+      renderCloud();
+    });
+  } catch (e) { cloud.err = 'אתחול הענן נכשל: ' + e.message; }
+}
+async function cloudSignIn() {
+  if (!_fbAuth) { setStatus('⚠ הענן לא מוגדר'); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try {
+    await _fbAuth.signInWithPopup(provider);
+  } catch (e) {
+    // חוסמי חלונות קופצים נפוצים במובייל — נופלים להפניה
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
+      await _fbAuth.signInWithRedirect(provider);
+    } else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+      setStatus('⚠ ההתחברות נכשלה: ' + e.code);
+    }
+  }
+}
+async function cloudSignOut() {
+  await DB.setMeta('cloudDek', null);
+  await DB.setMeta('cloudLastPush', 0);
+  cloud.dek = null;
+  if (_fbAuth) await _fbAuth.signOut();
+  renderCloud();
+  setStatus('נותקת מהענן. הנתונים במכשיר לא נמחקו.');
+}
+
+/* פותח את ההצפנה: יוצר מפתח בפעם הראשונה, או פותח קיים במכשיר חדש */
+async function cloudUnlock() {
+  if (!cloud.user) { setStatus('⚠ התחבר קודם'); return; }
+  try {
+    const rec = await fsGet(keyPath());
+    if (!rec) {
+      const pass = await askPassword({
+        title: '🔑 הגדרת סיסמת הצפנה',
+        desc: 'זו סיסמה נפרדת מחשבון Google, והיא זו שמונעת מ-Google לקרוא את המסמכים שלך. היא לא נשמרת בשום שרת — אם תאבד אותה, נתוני הענן לא ניתנים לשחזור.',
+        confirm: true,
+      });
+      if (!pass) return;
+      cloud.dek = await createDek(pass);
+      await DB.setMeta('cloudDek', cloud.dek);
+      setStatus('🔒 ההצפנה הוגדרה');
+    } else {
+      const pass = await askPassword({
+        title: '🔑 סיסמת ההצפנה',
+        desc: 'הזן את סיסמת ההצפנה שהגדרת. היא נדרשת פעם אחת בכל מכשיר חדש.',
+      });
+      if (!pass) return;
+      try { cloud.dek = await openDek(rec, pass); }
+      catch (e) { setStatus('⚠ סיסמת הצפנה שגויה'); return; }
+      await DB.setMeta('cloudDek', cloud.dek);
+      setStatus('🔓 ההצפנה נפתחה');
+    }
+    renderCloud();
+    await syncNow();
+  } catch (e) { setStatus('⚠ ' + (e.message || e)); }
+}
+
+/* ===== תצוגת מצב הענן ===== */
+function renderCloud() {
+  const el = document.getElementById('cloud-panel');
+  if (!el) return;
+  if (!cloudOn()) {
+    el.innerHTML = `<div class="disc" style="margin-top:0">☁️ סנכרון ענן לא מוגדר. הנתונים מקומיים בלבד — גבה מדי פעם.<br>
+      להפעלה: ראה <b>firebase/README.md</b> ומלא את בלוק <b>CLOUD</b> בקוד.</div>`;
+    return;
+  }
+  const when = cloud.lastSync ? new Date(cloud.lastSync).toLocaleString('he-IL') : 'טרם סונכרן';
+  if (!cloud.user) {
+    el.innerHTML = `<div class="disc" style="margin-top:0">התחבר כדי לסנכרן בין מכשירים. המסמכים מוצפנים במכשיר לפני העלייה — Google מאחסן אותם אך לא יכול לקרוא אותם.</div>
+      <button class="btn" onclick="cloudSignIn()">🔵 התחבר עם Google</button>`;
+    return;
+  }
+  if (!cloud.dek) {
+    el.innerHTML = `<div class="disc" style="margin-top:0">מחובר כ-<b>${escH(cloud.user.email || '')}</b><br>נדרשת סיסמת ההצפנה כדי לפתוח את הסנכרון במכשיר הזה.</div>
+      <button class="btn" onclick="cloudUnlock()">🔑 הזן סיסמת הצפנה</button>
+      <button class="btn sec" onclick="cloudSignOut()">התנתק</button>`;
+    return;
+  }
+  el.innerHTML = `<div class="disc" style="margin-top:0">
+      ✅ מסונכרן ומוצפן · <b>${escH(cloud.user.email || '')}</b><br>
+      סנכרון אחרון: ${when}
+      ${cloud.err ? `<br><span style="color:#ff6b6b">⚠ ${escH(cloud.err)}</span>` : ''}
+    </div>
+    <button class="btn" onclick="syncNow()" ${cloud.syncing ? 'disabled' : ''}>${cloud.syncing ? '⏳ מסנכרן...' : '🔄 סנכרן עכשיו'}</button>
+    <button class="btn sec" onclick="cloudSignOut()">התנתק</button>`;
+}
+
 /* ===== אתחול ===== */
 document.getElementById('in-date').value  = localISO();
 document.getElementById('out-date').value = localISO();
-load();
+load().then(() => { renderCloud(); initCloud(); });
 </script>
 </body>
 </html>
