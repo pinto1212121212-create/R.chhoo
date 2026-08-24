@@ -356,6 +356,41 @@ const todayLocal = () => {
     document.getElementById('tb-tax').classList.contains('active')));
   await page.click('#tb-sum');
 
+  /* ─── כפתור הנעילה בכותרת ────────────────────────────────────────────
+     נעילה היא פעולה דחופה, ועד עכשיו היא דרשה ניווט וגלילה. הבדיקה
+     מוודאת ששני מצביו עושים משהו אמיתי — כפתור שאינו פועל גרוע מכפתור
+     שאינו קיים. */
+  check('כפתור הנעילה מוצג כבוי כשאין כספת', await page.evaluate(() => {
+    const b = document.getElementById('lockbtn');
+    return b && b.classList.contains('off') && b.textContent === '🔓';
+  }));
+  await page.click('#tb-in');
+  await page.waitForTimeout(200);
+  await page.click('#lockbtn');
+  await page.waitForTimeout(600);
+  check('כבוי — הכפתור מוביל לפאנל הכספת', await page.locator('#vault-panel').isVisible());
+
+  await page.evaluate(p => vaultEnable(p), VPASS);
+  await page.evaluate(() => renderVault());
+  check('פעיל — הכפתור משנה מצב', await page.evaluate(() => {
+    const b = document.getElementById('lockbtn');
+    return b.classList.contains('on') && b.textContent === '🔒';
+  }));
+  await page.click('#lockbtn');
+  await page.waitForTimeout(500);
+  check('פעיל — הכפתור נועל בפועל', await page.evaluate(() => !vault.key));
+  check('מסך הנעילה עלה מהכפתור', await page.isVisible('#lockscreen'));
+
+  await page.fill('#lock-pass', VPASS);
+  await page.click('#lockscreen button:has-text("🔓 פתח")');
+  await page.waitForSelector('#lockscreen', { state: 'hidden', timeout: 10000 });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => vaultDisable());
+  await page.evaluate(() => renderVault());
+
+  check('מזהה הגרסה מוצג', await page.evaluate(() =>
+    (document.getElementById('ver')?.textContent || '').includes('גרסה')));
+
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
 

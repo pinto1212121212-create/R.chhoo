@@ -73,6 +73,19 @@
   }
   h1 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
   .sub { font-size: 11px; color: var(--txt-3); margin-top: 2px; }
+  .hrow { display: flex; align-items: center; gap: 10px; }
+  .hrow h1 { flex: 1; min-width: 0; }
+  .lockbtn {
+    flex: 0 0 auto; width: 40px; height: 40px; border-radius: var(--r-m);
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--txt-2);
+    font-size: 17px; cursor: pointer; font-family: inherit; line-height: 1;
+    transition: background .16s var(--ease), opacity .16s var(--ease);
+  }
+  .lockbtn:hover { background: #22304f; }
+  /* כבוי = נוכח אך מעומעם. היכולת צריכה להיראות קיימת, אחרת היא מתגלה
+     במקרה — וזה בדיוק מה שקרה כשהפאנל ישב לבדו בתחתית טאב סיכום. */
+  .lockbtn.off { opacity: .45; }
+  .lockbtn.on { background: var(--pos-soft); border-color: #14503b; color: var(--pos); }
 
   /* ===== טאבים ===== */
   .tabs {
@@ -392,8 +405,13 @@
 <body>
 
 <header>
-  <h1>💼 הנה"ח FINAL — אוריאל פינטו</h1>
-  <div class="sub">עוסק פטור · מנוע מס 2026 · הסדרת שנים קודמות</div>
+  <div class="hrow">
+    <h1>💼 הנה"ח FINAL — אוריאל פינטו</h1>
+    <!-- נעילה היא פעולה דחופה מטבעה. עד עכשיו היא דרשה ניווט לטאב סיכום
+         וגלילה עד תחתיתו — בדיוק מה שאין זמן לעשות ברגע שצריך אותה. -->
+    <button id="lockbtn" class="lockbtn" onclick="lockBtnClick()" title="נעילת האפליקציה">🔓</button>
+  </div>
+  <div class="sub">עוסק פטור · מנוע מס 2026 · הסדרת שנים קודמות · <span id="ver"></span></div>
   <div class="tabs">
     <button class="tab active" id="tb-in" onclick="showTab('in',this)">הכנסות</button>
     <button class="tab" id="tb-out" onclick="showTab('out',this)">הוצאות</button>
@@ -686,6 +704,10 @@
 let data = { entries: [], settings: { points: 2.25, includeBL: true, k05: 0, k617: 0, milu: 0 }, yearStatus: {}, docs: {}, dismissed: {}, docFiles: {}, extraFiles: [], lastBackup: null };
 let staged = { in: null, out: null };
 let viewing = null;
+/* מזהה גרסה גלוי. בלעדיו אין דרך לענות על "האם אתה על הגרסה החדשה?"
+   מלבד ניחוש — שאלה שחזרה שוב ושוב כשדפדפן החזיק קובץ ישן במטמון. */
+const APP_VERSION = '2026.08.24';
+
 let uiYear = String(new Date().getFullYear());   // שנת המס המוצגת ('all' = הכל)
 /* =========================================================================
    קבועי מס לפי שנה
@@ -2803,8 +2825,27 @@ async function cloudNewRecovery() {
   } catch (e) { setStatus('⚠ ' + (e.message || e)); }
 }
 
+/* כשהכספת פעילה — נעילה מיידית מכל מסך. כשהיא כבויה — הובלה לפאנל, כי
+   כפתור שאינו עושה דבר גרוע מכפתור שאינו קיים. */
+function lockBtnClick() {
+  if (vault.on && vault.key) { vaultLockNow(); return; }
+  showTab('sum');
+  const el = document.getElementById('vault-panel');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function renderLockBtn() {
+  const b = document.getElementById('lockbtn');
+  if (!b) return;
+  const on = vault.on;
+  b.textContent = on ? '🔒' : '🔓';
+  b.classList.toggle('on', on);
+  b.classList.toggle('off', !on);
+  b.title = on ? 'נעל עכשיו' : 'נעילת האפליקציה — כבויה';
+}
+
 /* ===== תצוגת מצב הכספת ===== */
 function renderVault() {
+  renderLockBtn();
   const el = document.getElementById('vault-panel');
   if (!el) return;
   if (!vault.on) {
@@ -3142,6 +3183,9 @@ window.addEventListener('keydown', e => {
 /* ===== אתחול ===== */
 document.getElementById('in-date').value  = localISO();
 document.getElementById('out-date').value = localISO();
+const _ver = document.getElementById('ver');
+if (_ver) _ver.textContent = 'גרסה ' + APP_VERSION;
+
 load().then(() => {
   trackFooter();
   restoreTab();
