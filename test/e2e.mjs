@@ -466,6 +466,24 @@ const todayLocal = () => {
   check('הסכום השקלי בר-שחזור מהשדות',
     fx && Math.abs(fx.usd * fx.rate - fx.amount) < 0.01, 'ראיה לביקורת, לא הערה חופשית');
 
+  /* ─── קבלת PDF בצופה ─────────────────────────────────────────────────
+     ה-<img> אינו מציג PDF, והארכיון פתח עליו צופה ריק — נראה כמו קבלה
+     שלא נשמרה למרות שהיא שמורה. הבדיקה מוודאת שקובץ שאינו תמונה מקבל
+     הסבר, ושתמונה רגילה עדיין מוצגת כתמונה. */
+  await page.evaluate(() => showBlobInViewer(new Blob(['%PDF-1.4 test'], { type: 'application/pdf' }), false));
+  check('PDF בצופה — מוצג הסבר במקום מסך ריק', await page.evaluate(() =>
+    !document.getElementById('viewer-nonimg').classList.contains('hidden') &&
+    document.getElementById('viewer-img').classList.contains('hidden')));
+  await page.evaluate(() => closeViewer());
+  await page.evaluate(async () => {
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+    showBlobInViewer(new Blob([png], { type: 'image/png' }), false);
+  });
+  check('תמונה בצופה — מוצגת כרגיל', await page.evaluate(() =>
+    document.getElementById('viewer-nonimg').classList.contains('hidden') &&
+    !document.getElementById('viewer-img').classList.contains('hidden')));
+  await page.evaluate(() => closeViewer());
+
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
 
