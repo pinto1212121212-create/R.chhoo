@@ -1,0 +1,11 @@
+name = "hanhac-scan"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# הדומיינים שמורשים לקרוא ל-Worker. עדכן לכתובת שבה האפליקציה מתארחת.
+ALLOWED_ORIGINS = "https://pinto1212121212-create.github.io"
+
+# ANTHROPIC_API_KEY נשמר כ-secret ולא כאן:
+#   npx wrangler secret put ANTHROPIC_API_KEY
