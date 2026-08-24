@@ -434,6 +434,22 @@ const todayLocal = () => {
   });
   check('ייבוא חוזר אינו מכפיל', again === impRes, 'זוהו ככפילות');
 
+  /* אצל פרופ-פירם שלוש חשבוניות שונות באותו יום ובאותו סכום הן שגרה —
+     שלושה חשבונות eval במקביל. חתימת כפילות בלי ההערה זיהתה אותן ככפילות
+     ומחקה הוצאות אמיתיות מהדוח. */
+  const twins = await page.evaluate(async () => {
+    const before = data.entries.length;
+    const mk = note => new File([new Blob([JSON.stringify({ format: 1, entries: [
+      { type: 'out', date: '2024-04-08', amount: 37.40, cat: 'פרופ-פירם — Apex (היסטורי)', note }
+    ]})], { type: 'application/json' })], 'x.json');
+    await importEntries(mk('Apex WE5ZR/1'));
+    await importEntries(mk('Apex NM1Q1/1'));   // אותו יום, אותו סכום, חשבונית אחרת
+    await importEntries(mk('Apex WE5ZR/1'));   // כפילות אמיתית — חייבת להיחסם
+    return data.entries.length - before;
+  });
+  check('אותו יום ואותו סכום עם חשבונית שונה — נכנסות שתיהן', twins === 2,
+    `נוספו ${twins} (2 שונות נכנסו, הכפילות נחסמה)`);
+
   /* ─── המרת מט"ח ────────────────────────────────────────────────────────
      ברירת המחדל הייתה 3.00 בעוד השער האמיתי סביב 3.7, כלומר כל סכום
      דולרי נרשם בכ-20% פחות. בהכנסה זה דיווח חסר לרשות המסים. הבדיקה
