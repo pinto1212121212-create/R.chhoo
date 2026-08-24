@@ -42,8 +42,12 @@ const check = (name, cond, note = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${note ? `  (${note})` : ''}`);
 };
 
+/* מסך טלפון ולא ברירת המחדל של שולחן העבודה: זו האפליקציה היחידה שאוריאל
+   פותח, והוא פותח אותה בטלפון. בדיקות פריסה ברוחב 1280 היו מאשרות מצב
+   שאיש אינו רואה. */
+const VIEWPORT = { width: 412, height: 915 };
 const newPage = async () => {
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await browser.newContext({ viewport: VIEWPORT })).newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -306,6 +310,41 @@ const todayLocal = () => {
     JSON.parse(back).e.length === JSON.parse(before).e.length,
     `${JSON.parse(back).e.length} מול ${JSON.parse(before).e.length}`);
   check('רשומת המנעול נמחקה', await page.evaluate(async () => !(await DB.rawMetaGet('__vault'))));
+
+  /* ─── פריסה ────────────────────────────────────────────────────────────
+     הסרגל התחתון קבוע במקומו. אם ריפוד הגוף קטן ממנו, הרשומה האחרונה
+     נחתכת — תקלה שאינה מפילה שום בדיקה לוגית ושנראית למשתמש בכל יום. */
+  await page.click('#tb-in');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+  const clip = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#list-in .entry')];
+    const f = document.querySelector('.footer').getBoundingClientRect();
+    const last = rows[rows.length - 1];
+    if (!last) return { ok: true };
+    const r = last.getBoundingClientRect();
+    return { ok: r.bottom <= f.top + 1, gap: Math.round(f.top - r.bottom) };
+  });
+  check('הסרגל התחתון אינו מכסה את הרשומה האחרונה', clip.ok, `מרווח ${clip.gap ?? '—'}px`);
+
+  const fits = await page.evaluate(() => {
+    // תג ההתראה ממוקם במכוון מחוץ לגבולות הכפתור, ולכן הוא מוסתר לרגע
+    // המדידה — אחרת הוא נספר כגלישת טקסט ומדווח על תקלה שאינה קיימת.
+    const bdgs = [...document.querySelectorAll('.tab .bdg')];
+    bdgs.forEach(b => b.style.display = 'none');
+    const tabs = [...document.querySelectorAll('.tab')];
+    const cut = tabs.filter(t => t.scrollWidth > t.clientWidth + 1).map(t => t.textContent.trim());
+    const row = document.querySelector('.tabs');
+    const fit = row.scrollWidth <= row.clientWidth + 1;
+    bdgs.forEach(b => b.style.display = '');
+    return { cut, row: fit };
+  });
+  check('שמות הטאבים אינם נחתכים', fits.cut.length === 0, fits.cut.join(', ') || 'כולם שלמים');
+  check('שורת הטאבים נכנסת ברוחב המסך', fits.row);
+
+  check('אין גלילה אופקית בדף', await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
 
   // רענון באמצע עבודה החזיר תמיד ל"הכנסות", ואיבד את ההקשר
   await page.click('#tb-tax');
