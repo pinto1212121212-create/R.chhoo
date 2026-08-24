@@ -450,6 +450,32 @@ const todayLocal = () => {
   check('אותו יום ואותו סכום עם חשבונית שונה — נכנסות שתיהן', twins === 2,
     `נוספו ${twins} (2 שונות נכנסו, הכפילות נחסמה)`);
 
+  /* אותה חשבונית יכולה להגיע פעמיים בקבצים שונים — הערה מנוסחת אחרת,
+     ואפילו סכום שקלי שונה אם השער חושב מחדש. מספר החשבונית הוא הזהות
+     האמיתית של המסמך, והוא שחוסם. נבדק גם מול שדה inv וגם מול המספר
+     שמוטמע בהערות של רשומות ישנות. */
+  const invGuard = await page.evaluate(async () => {
+    const before = data.entries.length;
+    const mk = e => new File([new Blob([JSON.stringify({ format: 1, entries: [e] })],
+      { type: 'application/json' })], 'x.json');
+    await importEntries(mk({ type: 'out', date: '2024-07-14', amount: 138.04,
+      cat: 'פרופ-פירם — Apex (היסטורי)', note: 'גרסה א', inv: 'TST99/1' }));
+    const a = data.entries.length - before;
+    // אותה חשבונית, הערה וסכום אחרים לגמרי — חייבת להיחסם
+    await importEntries(mk({ type: 'out', date: '2024-07-14', amount: 139.99,
+      cat: 'פרופ-פירם — Apex (היסטורי)', note: 'גרסה ב שונה', inv: 'TST99/1' }));
+    const b = data.entries.length - before;
+    // רשומה ישנה בלי שדה inv אך עם המספר בהערה — גם היא חוסמת
+    await importEntries(mk({ type: 'out', date: '2024-04-08', amount: 140.00,
+      cat: 'פרופ-פירם — Apex (היסטורי)', note: 'ניסוח חדש', inv: 'WE5ZR/1' }));
+    const c = data.entries.length - before;
+    return { a, b, c };
+  });
+  check('אותה חשבונית בקובץ שני — נחסמת', invGuard.a === 1 && invGuard.b === 1,
+    `נוספה ${invGuard.a}, ניסיון שני הוסיף ${invGuard.b - invGuard.a}`);
+  check('חשבונית שמספרה מוטמע בהערה ישנה — נחסמת', invGuard.c === invGuard.b,
+    'הזיהוי עובד גם בלי שדה inv ברשומה הקיימת');
+
   /* ─── המרת מט"ח ────────────────────────────────────────────────────────
      ברירת המחדל הייתה 3.00 בעוד השער האמיתי סביב 3.7, כלומר כל סכום
      דולרי נרשם בכ-20% פחות. בהכנסה זה דיווח חסר לרשות המסים. הבדיקה
