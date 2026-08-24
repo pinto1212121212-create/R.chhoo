@@ -73,8 +73,12 @@ try {
   console.log('\n↩️  cloud-config.js הוחזר למצבו המקורי');
 }
 
+/* הבדיקות למעלה דורסות את הקובץ האמיתי, ולכן החזרתו למצבה המקורי היא חלק
+   מהבדיקה עצמה — לא ניקיון בלבד. משווים בייט-בייט, בלי להניח אם הענן דלוק
+   או כבוי אצל המשתמש הזה. */
+check('שחזור הקובץ הצליח', fs.readFileSync(CONFIG_FILE, 'utf8') === original);
 const restored = readCloud();
-check('שחזור הקובץ הצליח', !isConfigured(restored), 'הענן נשאר כבוי כברירת מחדל');
+console.log(`   ${isConfigured(restored) ? `☁️  הענן מוגדר (${restored.projectId})` : '💤 הענן כבוי'}`);
 
 console.log('\n' + '─'.repeat(46));
 console.log(`עברו ${pass.length} | נכשלו ${fail.length}`);
