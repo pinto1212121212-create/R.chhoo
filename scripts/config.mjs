@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const INDEX = path.join(ROOT, 'index.html');
-const BLOCK = /const CLOUD = \{[\s\S]*?\n\};/;
+export const CONFIG_FILE = path.join(ROOT, 'cloud-config.js');
+const BLOCK = /window\.CLOUD_CONFIG = \{[\s\S]*?\n\};/;
 
 export const C = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -18,25 +19,25 @@ export const step = m => console.log(`\n${C.bold}${C.cyan}▸ ${m}${C.reset}`);
 export const note = m => console.log(`   ${C.dim}${m}${C.reset}`);
 
 export function readCloud() {
-  const src = fs.readFileSync(INDEX, 'utf8');
+  const src = fs.readFileSync(CONFIG_FILE, 'utf8');
   const m = src.match(BLOCK);
-  if (!m) throw new Error('לא נמצא בלוק CLOUD ב-index.html');
+  if (!m) throw new Error('לא נמצא בלוק CLOUD_CONFIG ב-cloud-config.js');
   const out = {};
   for (const [, k, v] of m[0].matchAll(/(\w+)\s*:\s*'([^']*)'/g)) out[k] = v;
   return out;
 }
 
 export function writeCloud(cfg) {
-  const src = fs.readFileSync(INDEX, 'utf8');
+  const src = fs.readFileSync(CONFIG_FILE, 'utf8');
   const block =
-`const CLOUD = {
+`window.CLOUD_CONFIG = {
   apiKey:     '${cfg.apiKey || ''}',
   authDomain: '${cfg.authDomain || ''}',
   projectId:  '${cfg.projectId || ''}',
   bucket:     '${cfg.bucket || ''}',
 };`;
-  if (!BLOCK.test(src)) throw new Error('לא נמצא בלוק CLOUD ב-index.html');
-  fs.writeFileSync(INDEX, src.replace(BLOCK, block));
+  if (!BLOCK.test(src)) throw new Error('לא נמצא בלוק CLOUD_CONFIG ב-cloud-config.js');
+  fs.writeFileSync(CONFIG_FILE, src.replace(BLOCK, block));
 }
 
 export const isConfigured = c => !!(c.apiKey && c.projectId && c.bucket);
