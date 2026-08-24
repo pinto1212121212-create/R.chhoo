@@ -10,8 +10,8 @@
    כל עוד הערכים ריקים, הענן כבוי והאפליקציה עובדת מקומית בלבד.
    ========================================================================= */
 window.CLOUD_CONFIG = {
-  apiKey:     '',
-  authDomain: '',
-  projectId:  '',
-  bucket:     '',
+  apiKey:     'AIzaSyCoLT38_th62Vbfno1puHAHt1gMMwePaBU',
+  authDomain: 'pinto-hanhac.firebaseapp.com',
+  projectId:  'pinto-hanhac',
+  bucket:     'pinto-hanhac.firebasestorage.app',
 };
