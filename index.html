@@ -7,8 +7,14 @@
 <!-- Content-Security-Policy: default-src 'none' חוסם כל משאב חיצוני.
      המשמעות המעשית: גם אם קוד זדוני יצליח לרוץ בדף, connect-src מונע ממנו
      לשלוח את מסמכי המס לשרת חיצוני. form-action 'none' חוסם שליחת טפסים.
-     אם מגדירים AI_ENDPOINT — יש להוסיף את מקור ה-Worker ל-connect-src. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
+     אם מגדירים AI_ENDPOINT — יש להוסיף את מקור ה-Worker ל-connect-src.
+
+     apis.google.com ב-script-src אינו קישוט: ספריית האימות של Firebase
+     מזריקה משם את js/api.js לתוך המסמך הזה (gapiScript ב-firebase-auth-
+     compat.js) כדי לנהל את ה-iframe שזרימות ההתחברות נשענות עליו. בלעדיו
+     כל התחברות נכשלת ב-auth/internal-error — קוד גנרי שאינו מרמז על הסיבה,
+     ולכן קל מאוד לרדוף אחריו במקום הלא נכון. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://www.googleapis.com https://*.firebaseapp.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1a2130">
 <!-- הוספה למסך הבית: משפרת משמעותית את הסיכוי שהדפדפן ישמור על האחסון -->
@@ -1935,25 +1941,20 @@ async function initCloud() {
     });
   } catch (e) { cloud.err = 'אתחול הענן נכשל: ' + e.message; }
 }
-/* זרימת החלון הקופץ נשענת על iframe מוסתר ב-authDomain, ולכן היא דורשת
-   גישה לאחסון צד-שלישי. דפדפני מובייל רבים חוסמים אותו כברירת מחדל
-   (Samsung Internet, גלישה פרטית, דפדפנים מוטמעים בתוך אפליקציות), וכשה-
-   iframe נכשל Firebase מחזיר auth/internal-error — הודעה שאינה מרמזת על
-   הסיבה. ההפניה אינה נשענת על אותו iframe, ולכן היא הנתיב הראשי במובייל. */
+/* חלון קופץ הוא הנתיב הראשי בכל הפלטפורמות: ה-authDomain שונה מהמקור של
+   האפליקציה, ובמצב הזה ההפניה תלויה גם באחסון ששורד ניווט מלא. הנפילה
+   להפניה תופסת כל שגיאה שאינה ביטול מכוון — הצמצום המקורי ל-popup-blocked
+   בלבד הוא שהסתיר תקלה אמיתית מאחורי כפתור שפשוט לא עשה כלום. */
 const CANCELLED_SIGNIN = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request'];
 async function cloudSignIn() {
   if (!_fbAuth) { setStatus('⚠ הענן לא מוגדר'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
-  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   cloud.err = null;
   try {
-    if (mobile) { await _fbAuth.signInWithRedirect(provider); return; }
     await _fbAuth.signInWithPopup(provider);
   } catch (e) {
     if (CANCELLED_SIGNIN.includes(e.code)) return;
-    if (!mobile) {
-      try { await _fbAuth.signInWithRedirect(provider); return; } catch (e2) { e = e2; }
-    }
+    try { await _fbAuth.signInWithRedirect(provider); return; } catch (e2) { e = e2; }
     // הקוד לבדו ("auth/internal-error") אינו מספיק כדי לאבחן, ולכן גם ההודעה
     cloud.err = `ההתחברות נכשלה: ${e.code || ''}${e.message ? ' — ' + e.message : ''}`.trim();
     renderCloud();

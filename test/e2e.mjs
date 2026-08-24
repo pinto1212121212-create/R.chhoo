@@ -234,6 +234,19 @@ const todayLocal = () => {
     if (!await page.locator('#' + sec).isVisible()) fail.push(`טאב ${tab}`);
   }
   check('כל הטאבים נפתחים', !fail.some(f => f.startsWith('טאב')));
+
+  /* ספריית האימות של Firebase מזריקה את apis.google.com/js/api.js לתוך
+     המסמך. כשה-CSP חוסם אותו, כל התחברות נכשלת ב-auth/internal-error —
+     ושום דבר אחר לא נראה שבור: הדף נטען, הכפתור מרונדר, הבדיקות עוברות.
+     התקלה מתגלה רק כשמשתמש אמיתי לוחץ. test/cloud.mjs מחליף את ה-CSP כדי
+     לדבר עם האמולטור ולכן לא יתפוס נסיגה כזו, ומכאן שמקומה דווקא כאן. */
+  const csp = await page.getAttribute('meta[http-equiv="Content-Security-Policy"]', 'content');
+  const scriptSrc = (csp.split(';').find(d => d.trim().startsWith('script-src')) || '');
+  check('ה-CSP מתיר את gapi שהתחברות Google דורשת',
+    scriptSrc.includes('https://apis.google.com'), scriptSrc.trim());
+  check('ה-CSP מתיר את ה-iframe של authDomain',
+    (csp.split(';').find(d => d.trim().startsWith('frame-src')) || '').includes('firebaseapp.com'));
+
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
 
