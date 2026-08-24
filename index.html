@@ -332,6 +332,11 @@
       <div class="disc">הגיבוי כולל את כל הרשומות, הקבלות, הטפסים וההגדרות — קובץ אחד שאפשר לשמור בדרייב או לשלוח לעצמך במייל. השחזור מחזיר הכל בדיוק כפי שהיה, גם במכשיר אחר.</div>
     </div>
 
+    <h3>🔒 נעילת האפליקציה</h3>
+    <div class="panel">
+      <div id="vault-panel"></div>
+    </div>
+
     <h3>☁️ סנכרון ענן</h3>
     <div class="panel">
       <div id="cloud-panel"></div>
@@ -347,6 +352,19 @@
   </div>
   <button class="btn" style="margin-top:8px;background:#4ade80;color:#0f1420" onclick="buildYearPackage()">📦 חבילה שנתית מלאה לרו"ח (דוח + קבלות + טפסים)</button>
   <div class="status" id="status"></div>
+</div>
+
+<!-- מסך הנעילה מכסה את האפליקציה כולה. כשהכספת נעולה הנתונים כלל אינם
+     נטענים לזיכרון, ולכן אין כאן מסך שמסתיר תוכן שכבר מוצג — אין תוכן. -->
+<div id="lockscreen" class="modal hidden">
+  <div class="pwbox">
+    <b>🔒 הנה"ח נעולה</b>
+    <div class="disc" style="margin-top:0">הנתונים במכשיר מוצפנים. הזן את סיסמת הכספת כדי לפתוח אותם.</div>
+    <button class="btn" id="lock-bio" onclick="lockBio()">👆 פתח בטביעת אצבע</button>
+    <input type="password" id="lock-pass" placeholder="סיסמת הכספת" autocomplete="current-password">
+    <div id="lock-err"></div>
+    <button class="btn" onclick="lockSubmit()">🔓 פתח</button>
+  </div>
 </div>
 
 <div id="pwmodal" class="modal hidden">
@@ -562,23 +580,216 @@ function openDB() {
 const reqP  = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const txDone = t => new Promise((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('aborted')); });
 
+/* ===== הכספת המקומית =====
+   ההצפנה לענן מגנה על הנתונים אצל הספק. היא אינה מגנה על המכשיר עצמו:
+   מי שמחזיק טלפון פתוח רואה הכל. הכספת סוגרת את הפער — הרשומות, הקבצים
+   וההגדרות יושבים ב-IndexedDB מוצפנים, וללא הסיסמה הם רצף בייטים.
+
+   נקודת החנק היא שכבת ה-DB ולא נתיבי הקריאה והכתיבה שמעליה: יש עשרות
+   כאלה, ודי בכך שאחד יישכח כדי שהכספת תדלוף. כאן יש מקום אחד להגן עליו.
+
+   שלושה מפתחות ב-meta נשארים גלויים בהכרח: רשומת הכספת עצמה (היא המנעול),
+   רישום הביומטריה, ומפתח הענן — שהוא CryptoKey לא-ניתן-לייצוא ולכן אינו
+   ניתן לסריאליזציה ממילא, ואטום בפני עצמו. */
+const VAULT_META = '__vault', VAULT_BIO = '__vault_bio';
+const PLAIN_META = new Set([VAULT_META, VAULT_BIO, 'cloudDek']);
+const vault = { key: null, on: false, hasBio: false };
+
+const _tx = (store, mode) => _db.transaction(store, mode).objectStore(store);
+const isEnc = r => r && r._v === 1 && r.ct;
+
+async function vEnc(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vault.key,
+    new TextEncoder().encode(JSON.stringify(obj)));
+  return { iv: toB64(iv), ct: toB64(ct) };
+}
+async function vDec(rec) {
+  const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, vault.key, fromB64(rec.ct));
+  return JSON.parse(new TextDecoder().decode(out));
+}
+async function vEncBytes(buf) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  return { biv: toB64(iv), bct: await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vault.key, buf) };
+}
+const vDecBytes = rec =>
+  crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.biv) }, vault.key, rec.bct);
+
+/* עוטף רשומה לכתיבה. כשהכספת כבויה הרשומה נשמרת כפי שהיא, כך שהאפליקציה
+   מתנהגת בדיוק כמו קודם למי שלא הפעיל אותה. */
+async function encEntry(e)  { return vault.key ? { id: e.id, _v: 1, ...(await vEnc(e)) } : e; }
+async function decEntry(r)  { return isEnc(r) ? vDec(r) : r; }
+async function encMeta(k, v) { return (vault.key && !PLAIN_META.has(k)) ? { k, _v: 1, ...(await vEnc(v)) } : { k, v }; }
+async function decMeta(r)   { return isEnc(r) ? vDec(r) : r.v; }
+
+async function encFile(key, blob, name) {
+  const base = { key, name: name || '', type: blob.type, size: blob.size, ts: Date.now() };
+  if (!vault.key) return { ...base, blob };
+  const { biv, bct } = await vEncBytes(await blob.arrayBuffer());
+  // גם שם הקובץ וסוגו מוצפנים: "אישור ניכוי מס במקור.pdf" הוא מידע בפני עצמו
+  return { key, _v: 1, biv, bct, ...(await vEnc(base)) };
+}
+async function decFile(r) {
+  if (!isEnc(r)) return r;
+  const head = await vDec(r);
+  return { ...head, blob: new Blob([await vDecBytes(r)], { type: head.type || 'application/octet-stream' }) };
+}
+
 const DB = {
-  allEntries:  ()        => reqP(_db.transaction('entries','readonly').objectStore('entries').getAll()),
-  async putEntry(e)      { const t = _db.transaction('entries','readwrite'); t.objectStore('entries').put(e); await txDone(t); },
-  async putEntries(list) { const t = _db.transaction('entries','readwrite'); const s = t.objectStore('entries'); list.forEach(e => s.put(e)); await txDone(t); },
+  async allEntries()     { const all = await reqP(_tx('entries','readonly').getAll()); return Promise.all(all.map(decEntry)); },
+  async putEntry(e)      { const rec = await encEntry(e); const t = _db.transaction('entries','readwrite'); t.objectStore('entries').put(rec); await txDone(t); },
+  async putEntries(list) { const recs = await Promise.all(list.map(encEntry)); const t = _db.transaction('entries','readwrite'); const s = t.objectStore('entries'); recs.forEach(r => s.put(r)); await txDone(t); },
   async delEntry(id)     { const t = _db.transaction('entries','readwrite'); t.objectStore('entries').delete(id); await txDone(t); },
 
-  async getMeta(k, def)  { const r = await reqP(_db.transaction('meta','readonly').objectStore('meta').get(k)); return r === undefined ? def : r.v; },
-  async setMeta(k, v)    { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put({ k, v }); await txDone(t); },
-  async setMetaMany(obj) { const t = _db.transaction('meta','readwrite'); const s = t.objectStore('meta'); Object.entries(obj).forEach(([k,v]) => s.put({ k, v })); await txDone(t); },
+  async getMeta(k, def)  { const r = await reqP(_tx('meta','readonly').get(k)); return r === undefined ? def : decMeta(r); },
+  async setMeta(k, v)    { const rec = await encMeta(k, v); const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put(rec); await txDone(t); },
+  async setMetaMany(obj) {
+    const recs = await Promise.all(Object.entries(obj).map(([k, v]) => encMeta(k, v)));
+    const t = _db.transaction('meta','readwrite'); const s = t.objectStore('meta');
+    recs.forEach(r => s.put(r)); await txDone(t);
+  },
 
-  async putFile(key, blob, name) { const t = _db.transaction('files','readwrite'); t.objectStore('files').put({ key, blob, name: name||'', type: blob.type, size: blob.size, ts: Date.now() }); await txDone(t); },
-  getFile:  key => reqP(_db.transaction('files','readonly').objectStore('files').get(key)),
-  allFiles: ()  => reqP(_db.transaction('files','readonly').objectStore('files').getAll()),
+  async putFile(key, blob, name) { const rec = await encFile(key, blob, name); const t = _db.transaction('files','readwrite'); t.objectStore('files').put(rec); await txDone(t); },
+  async getFile(key)     { const r = await reqP(_tx('files','readonly').get(key)); return r === undefined ? undefined : decFile(r); },
+  async allFiles()       { const all = await reqP(_tx('files','readonly').getAll()); return Promise.all(all.map(decFile)); },
   async delFile(key)     { const t = _db.transaction('files','readwrite'); t.objectStore('files').delete(key); await txDone(t); },
 
   async clearAll()       { const t = _db.transaction(['entries','files','meta'],'readwrite'); ['entries','files','meta'].forEach(n => t.objectStore(n).clear()); await txDone(t); },
+
+  /* גישה גולמית, לשימוש הכספת בלבד: היא חייבת לקרוא ולכתוב את רשומת
+     המנעול שלה לפני שיש מפתח כלשהו. */
+  async rawMetaGet(k)    { const r = await reqP(_tx('meta','readonly').get(k)); return r === undefined ? null : r.v; },
+  async rawMetaPut(k, v) { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put({ k, v }); await txDone(t); },
+  async rawMetaDel(k)    { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').delete(k); await txDone(t); },
+  rawEntries: ()         => reqP(_tx('entries','readonly').getAll()),
+  rawFiles:   ()         => reqP(_tx('files','readonly').getAll()),
+  rawMetaAll: ()         => reqP(_tx('meta','readonly').getAll()),
 };
+
+/* ===== מנעול הכספת ===== */
+async function vaultLoad() {
+  const rec = await DB.rawMetaGet(VAULT_META);
+  vault.on = !!rec;
+  vault.hasBio = !!(await DB.rawMetaGet(VAULT_BIO));
+  return rec;
+}
+/* extractable: המפתח נעטף מחדש בכל החלפת סיסמה ובכל רישום ביומטרי */
+async function vaultUnlock(pass) {
+  const rec = await DB.rawMetaGet(VAULT_META);
+  if (!rec) return false;
+  const kek = await deriveKek(pass, fromB64(rec.salt), rec.iterations || PBKDF2_ITER);
+  vault.key = await crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), kek,
+    { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
+    true, ['encrypt', 'decrypt']);
+  return true;
+}
+async function vaultWriteLock(key, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const kek = await deriveKek(pass, salt, PBKDF2_ITER);
+  const wrapped = await crypto.subtle.wrapKey('raw', key, kek, { name: 'AES-GCM', iv });
+  await DB.rawMetaPut(VAULT_META, { salt: toB64(salt), iv: toB64(iv), wrapped: toB64(wrapped),
+                                    iterations: PBKDF2_ITER, version: 1 });
+}
+
+/* הפעלה: כל מה שכבר שמור נקרא גלוי, ואז נכתב מחדש מוצפן. הקריאה חייבת
+   לקדום להצבת המפתח — אחרת שכבת ה-DB תנסה לפענח רשומות שעדיין גלויות. */
+async function vaultEnable(pass) {
+  const entries = await DB.rawEntries();
+  const files   = await DB.rawFiles();
+  const metas   = await DB.rawMetaAll();
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  vault.key = key;
+  try {
+    if (entries.length) await DB.putEntries(entries.filter(e => !isEnc(e)));
+    for (const f of files) if (!isEnc(f) && f.blob) await DB.putFile(f.key, f.blob, f.name);
+    for (const m of metas) {
+      if (PLAIN_META.has(m.k) || isEnc(m)) continue;
+      await DB.setMeta(m.k, m.v);
+    }
+    await vaultWriteLock(key, pass);
+  } catch (e) {
+    vault.key = null;            // מיגרציה חלקית לא תישאר עם מנעול שאי אפשר לפתוח
+    throw e;
+  }
+  vault.on = true;
+}
+/* ביטול: פענוח חזרה לגלוי. הרשומות נקראות דרך DB (כלומר מפוענחות) ואז
+   נכתבות אחרי שהמפתח הוסר. */
+async function vaultDisable() {
+  const entries = await DB.allEntries();
+  const files   = await DB.allFiles();
+  const rawMeta = await DB.rawMetaAll();
+  const metas = [];
+  for (const m of rawMeta) {
+    if (PLAIN_META.has(m.k)) continue;
+    metas.push([m.k, isEnc(m) ? await vDec(m) : m.v]);
+  }
+  vault.key = null;
+  if (entries.length) await DB.putEntries(entries);
+  for (const f of files) if (f.blob) await DB.putFile(f.key, f.blob, f.name);
+  for (const [k, v] of metas) await DB.setMeta(k, v);
+  await DB.rawMetaDel(VAULT_META);
+  await DB.rawMetaDel(VAULT_BIO);
+  vault.on = false; vault.hasBio = false;
+}
+
+/* ===== פתיחה ביומטרית =====
+   הביומטריה שווה משהו רק אם היא מספקת חומר מפתח אמיתי. תוסף ה-PRF של
+   WebAuthn עושה בדיוק זאת: המאמת גוזר סוד קבוע שאינו יוצא ממנו, ובו נעטף
+   מפתח הכספת. בלי PRF היינו נאלצים להשאיר את המפתח נגיש ולשים מעליו רק
+   שאלה — מחסום שנראה כמו הגנה ואינו הגנה. לכן, אם התוסף אינו נתמך,
+   ההצעה נדחית במפורש במקום להתחזות. */
+const bioSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
+const prfKey = bits => crypto.subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, ['wrapKey', 'unwrapKey']);
+
+async function bioRegister() {
+  if (!vault.key) throw new Error('הכספת נעולה');
+  if (!bioSupported()) throw new Error('המכשיר אינו תומך בזיהוי ביומטרי בדפדפן');
+  const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+  const userId = crypto.getRandomValues(new Uint8Array(16));
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'הנהלת חשבונות' },
+    user: { id: userId, name: 'vault', displayName: 'כספת מקומית' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    extensions: { prf: {} },
+    timeout: 60000,
+  }});
+  if (!cred) throw new Error('הרישום בוטל');
+  const ext = cred.getClientExtensionResults();
+  if (!ext.prf || ext.prf.enabled === false) throw new Error('PRF_UNSUPPORTED');
+  const credId = toB64(cred.rawId);
+  // הסוד עצמו מתקבל רק מאימות, ולא מהרישום — ולכן נדרשת פעולה שנייה
+  const bits = await bioSecret(credId, prfSalt);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const wrapped = await crypto.subtle.wrapKey('raw', vault.key, await prfKey(bits), { name: 'AES-GCM', iv });
+  await DB.rawMetaPut(VAULT_BIO, { credId, prfSalt: toB64(prfSalt), iv: toB64(iv), wrapped: toB64(wrapped) });
+  vault.hasBio = true;
+}
+async function bioSecret(credId, prfSalt) {
+  const assertion = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ id: fromB64(credId), type: 'public-key' }],
+    userVerification: 'required',
+    extensions: { prf: { eval: { first: prfSalt } } },
+    timeout: 60000,
+  }});
+  const res = assertion && assertion.getClientExtensionResults().prf;
+  if (!res || !res.results || !res.results.first) throw new Error('PRF_UNSUPPORTED');
+  return res.results.first;
+}
+async function bioUnlock() {
+  const rec = await DB.rawMetaGet(VAULT_BIO);
+  if (!rec) throw new Error('לא נרשם זיהוי ביומטרי');
+  const lock = await DB.rawMetaGet(VAULT_META);
+  const bits = await bioSecret(rec.credId, fromB64(rec.prfSalt));
+  vault.key = await crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), await prfKey(bits),
+    { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
+    true, ['encrypt', 'decrypt']);
+  return !!lock;
+}
 
 /* ===== אחסון קבוע ומצב תפוסה ===== */
 async function ensurePersistent() {
@@ -626,6 +837,10 @@ async function load() {
     applyLoadedSettings(); render();
     return;
   }
+  await vaultLoad();
+  // נעול = לא נטען דבר. זו ההבחנה בין כספת למסך שמסתיר תוכן טעון.
+  if (vault.on && !vault.key) { showLock(); return; }
+  hideLock();
   try {
     // data.entries מחזיק רשומות חיות בלבד; ה-tombstones נשארים ב-DB לצורך הסנכרון
     const all = await DB.allEntries();
@@ -645,6 +860,63 @@ async function load() {
   applyLoadedSettings();
   render();
 }
+/* ===== מסך הנעילה ===== */
+function showLock() {
+  const el = document.getElementById('lockscreen');
+  if (!el) return;
+  document.getElementById('lock-bio').classList.toggle('hidden', !vault.hasBio);
+  document.getElementById('lock-err').textContent = '';
+  document.getElementById('lock-pass').value = '';
+  el.classList.remove('hidden');
+  if (vault.hasBio) lockBio();        // הדרך המהירה מוצעת מיד, ההקלדה נשארת כגיבוי
+}
+function hideLock() {
+  const el = document.getElementById('lockscreen');
+  if (el) { el.classList.add('hidden'); document.getElementById('lock-pass').value = ''; }
+}
+async function lockSubmit() {
+  const pass = document.getElementById('lock-pass').value;
+  const err = document.getElementById('lock-err');
+  if (!pass) { err.textContent = 'הזן סיסמה'; return; }
+  try {
+    await vaultUnlock(pass);
+  } catch (e) { err.textContent = 'סיסמה שגויה'; return; }
+  hideLock();
+  await load();
+  renderVault(); renderCloud(); initCloud();
+}
+async function lockBio() {
+  const err = document.getElementById('lock-err');
+  err.textContent = '';
+  try {
+    await bioUnlock();
+  } catch (e) {
+    // ביטול של המשתמש אינו תקלה, ולכן אינו מוצג כשגיאה
+    if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return;
+    err.textContent = e.message === 'PRF_UNSUPPORTED'
+      ? 'הזיהוי הביומטרי אינו זמין כאן — פתח עם הסיסמה' : (e.message || 'הפתיחה נכשלה');
+    return;
+  }
+  hideLock();
+  await load();
+  renderVault(); renderCloud(); initCloud();
+}
+document.getElementById('lock-pass').addEventListener('keydown', e => { if (e.key === 'Enter') lockSubmit(); });
+
+/* נעילה מיידית: מנקה את המפתח ואת הנתונים מהזיכרון, לא רק מסתירה מסך */
+function vaultLockNow() {
+  if (!vault.on) return;
+  vault.key = null;
+  data.entries = [];
+  data.docFiles = {}; data.extraFiles = [];
+  render();
+  showLock();
+}
+/* יציאה מהאפליקציה נועלת. זה הרגע שבו הטלפון עובר ידיים בפועל. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && vault.on && vault.key) vaultLockNow();
+});
+
 function applyLoadedSettings() {
   document.getElementById('set-points').value = data.settings.points;
   document.getElementById('set-bl').value = data.settings.includeBL ? '1' : '0';
@@ -1291,10 +1563,22 @@ function render() {
   renderArchive();
 }
 
+const TABS = ['in','out','arch','alerts','tax','docs','sum'];
+/* הטאב הפעיל נשמר ב-sessionStorage ולא ב-IndexedDB: זו העדפת תצוגה רגעית,
+   ולא נתון שצריך לשרוד סגירת דפדפן, להיכנס לגיבוי או להיות מוצפן בכספת. */
 function showTab(t, el) {
-  ['in','out','arch','alerts','tax','docs','sum'].forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
+  TABS.forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  if (el) el.classList.add('active');
+  const btn = el || document.getElementById('tb-'+t);
+  if (btn) btn.classList.add('active');
+  try { sessionStorage.setItem('hh-tab', t); } catch {}
+  // הארכיון בונה את הרשת בעצלתיים; בלי הרענון הזה הוא חוזר ריק אחרי טעינה
+  if (t === 'arch' && typeof renderArchive === 'function') renderArchive();
+}
+function restoreTab() {
+  let t = null;
+  try { t = sessionStorage.getItem('hh-tab'); } catch {}
+  if (t && TABS.includes(t)) showTab(t);
 }
 
 /* ===== ייצוא ===== */
@@ -2253,6 +2537,68 @@ async function cloudNewRecovery() {
   } catch (e) { setStatus('⚠ ' + (e.message || e)); }
 }
 
+/* ===== תצוגת מצב הכספת ===== */
+function renderVault() {
+  const el = document.getElementById('vault-panel');
+  if (!el) return;
+  if (!vault.on) {
+    el.innerHTML = `<div class="disc" style="margin-top:0">כרגע <b>אין נעילה</b>. מי שפותח את האפליקציה במכשיר הזה רואה את כל ההכנסות, הקבלות והטפסים.<br>
+      ההצפנה לענן מגנה על הנתונים אצל Google — לא על המכשיר שביד.</div>
+      <button class="btn" onclick="vaultTurnOn()">🔒 הפעל נעילה והצפנה במכשיר</button>`;
+    return;
+  }
+  el.innerHTML = `<div class="disc" style="margin-top:0">✅ <b>הכספת פעילה.</b> הנתונים במכשיר מוצפנים, והאפליקציה ננעלת ביציאה ממנה.<br>
+      זיהוי ביומטרי: ${vault.hasBio ? '<b style="color:#7ee787">רשום</b>' : 'לא רשום'}</div>
+    ${vault.hasBio
+      ? '<button class="btn sec" onclick="vaultBioRemove()">הסר זיהוי ביומטרי</button>'
+      : '<button class="btn" onclick="vaultBioAdd()">👆 הוסף טביעת אצבע / זיהוי פנים</button>'}
+    <button class="btn sec" onclick="vaultLockNow()">🔒 נעל עכשיו</button>
+    <button class="btn sec" onclick="vaultTurnOff()">בטל את הנעילה</button>`;
+}
+
+async function vaultTurnOn() {
+  if (!_db) { setStatus('⚠ אין אחסון'); return; }
+  const pass = await askPassword({
+    title: '🔒 סיסמת הכספת', confirm: true,
+    desc: 'סיסמה זו מצפינה את הנתונים במכשיר עצמו. בלעדיה הם אינם קריאים — גם לא לך. גבה לקובץ ZIP לפני שאתה ממשיך.',
+  });
+  if (!pass) return;
+  setStatus('מצפין את הנתונים במכשיר...');
+  try {
+    await vaultEnable(pass);
+    renderVault();
+    setStatus('🔒 הכספת הופעלה');
+    if (bioSupported()) await vaultBioAdd();
+  } catch (e) { setStatus('⚠ ההפעלה נכשלה: ' + (e.message || e)); }
+}
+async function vaultTurnOff() {
+  if (!vault.key) { setStatus('⚠ הכספת נעולה'); return; }
+  if (!confirm('לבטל את הנעילה? הנתונים במכשיר יישמרו שוב ללא הצפנה, וכל מי שפותח את האפליקציה יראה אותם.')) return;
+  try {
+    await vaultDisable();
+    renderVault();
+    setStatus('הנעילה בוטלה');
+  } catch (e) { setStatus('⚠ הביטול נכשל: ' + (e.message || e)); }
+}
+async function vaultBioAdd() {
+  try {
+    await bioRegister();
+    renderVault();
+    setStatus('👆 הזיהוי הביומטרי נרשם');
+  } catch (e) {
+    if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return;
+    setStatus(e.message === 'PRF_UNSUPPORTED'
+      ? '⚠ הדפדפן הזה אינו תומך בגזירת מפתח מהביומטריה. הכספת פעילה עם סיסמה בלבד.'
+      : '⚠ ' + (e.message || e));
+  }
+}
+async function vaultBioRemove() {
+  await DB.rawMetaDel(VAULT_BIO);
+  vault.hasBio = false;
+  renderVault();
+  setStatus('הזיהוי הביומטרי הוסר');
+}
+
 /* ===== תצוגת מצב הענן ===== */
 function renderCloud() {
   const el = document.getElementById('cloud-panel');
@@ -2530,7 +2876,14 @@ window.addEventListener('keydown', e => {
 /* ===== אתחול ===== */
 document.getElementById('in-date').value  = localISO();
 document.getElementById('out-date').value = localISO();
-load().then(() => { renderCloud(); initCloud(); });
+load().then(() => {
+  restoreTab();
+  renderVault();
+  // כשהכספת נעולה אין טעם לאתחל את הענן: אין מפתח, אין מה לסנכרן, וכל
+  // מה שזה ישיג הוא בקשות רשת מאחורי מסך נעילה.
+  if (vault.on && !vault.key) return;
+  renderCloud(); initCloud();
+});
 </script>
 </body>
 </html>
