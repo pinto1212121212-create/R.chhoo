@@ -2305,8 +2305,26 @@ async function importEntries(file) {
     const bad = rows.filter(r => !r.date || !(Number(r.amount) > 0) || !['in', 'out'].includes(r.type));
     if (bad.length) { setStatus(`⚠ ${bad.length} רשומות פגומות — לא יובא דבר`); return; }
 
-    const existing = new Set((await DB.allEntries()).filter(e => !e.deleted).map(entrySig));
-    const fresh = rows.filter(r => !existing.has(entrySig(r)));
+    const all = (await DB.allEntries()).filter(e => !e.deleted);
+    const existing = new Set(all.map(entrySig));
+
+    /* שכבה שנייה, לפי מספר החשבונית: אותה חשבונית יכולה להגיע בשני קבצים
+       שונים עם ניסוח הערה שונה, ואז חתימת השדות לא תתפוס אותה. מספר
+       החשבונית הוא הזהות האמיתית של המסמך — שני עותקים שלו הם תמיד אותה
+       הוצאה. נבדק גם מול שדה inv שמור וגם מול הטקסט שבהערות, כי רשומות
+       ישנות נושאות את המספר בהערה בלבד. */
+    const invOf = r => String(r.inv || '').trim();
+    const knownInv = new Set(all.map(invOf).filter(v => v.length >= 4));
+    const notesBlob = all.map(e => e.note || '').join('\n');
+    const seenInv = new Set();
+    const isDupInv = r => {
+      const v = invOf(r);
+      if (v.length < 4) return false;
+      if (seenInv.has(v) || knownInv.has(v) || notesBlob.includes(v)) return true;
+      seenInv.add(v);
+      return false;
+    };
+    const fresh = rows.filter(r => !existing.has(entrySig(r)) && !isDupInv(r));
     const dup = rows.length - fresh.length;
     if (!fresh.length) { setStatus(`⚠ כל ${rows.length} הרשומות כבר קיימות`); return; }
 
@@ -2339,6 +2357,8 @@ async function importEntries(file) {
         if (Number(r.usd) > 0 && Number(r.rate) > 0) {
           entry.usd = Number(r.usd); entry.rate = Number(r.rate); entry.ccy = r.ccy || 'USD';
         }
+        // מספר החשבונית נשמר כשדה — הזהות שמונעת ייבוא כפול של אותו מסמך
+        if (invOf(r).length >= 4) entry.inv = invOf(r);
         await DB.putEntry(entry);
         data.entries.push(entry);
         added++;
