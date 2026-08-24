@@ -1918,7 +1918,11 @@ async function initCloud() {
       projectId: CLOUD.projectId, storageBucket: CLOUD.bucket,
     });
     _fbAuth = firebase.auth();
-    await _fbAuth.getRedirectResult().catch(() => {});
+    // כישלון בחזרה מההפניה הוא בדיוק המקרה שבו המשתמש זקוק להסבר, ולכן
+    // הוא נשמר ומוצג. בליעה שקטה משאירה מסך שנראה כאילו כלום לא קרה.
+    await _fbAuth.getRedirectResult().catch(e => {
+      if (e && e.code) cloud.err = `החזרה מההתחברות נכשלה: ${e.code}${e.message ? ' — ' + e.message : ''}`;
+    });
     _fbAuth.onAuthStateChanged(async u => {
       cloud.user = u;
       if (u) {
@@ -1931,18 +1935,29 @@ async function initCloud() {
     });
   } catch (e) { cloud.err = 'אתחול הענן נכשל: ' + e.message; }
 }
+/* זרימת החלון הקופץ נשענת על iframe מוסתר ב-authDomain, ולכן היא דורשת
+   גישה לאחסון צד-שלישי. דפדפני מובייל רבים חוסמים אותו כברירת מחדל
+   (Samsung Internet, גלישה פרטית, דפדפנים מוטמעים בתוך אפליקציות), וכשה-
+   iframe נכשל Firebase מחזיר auth/internal-error — הודעה שאינה מרמזת על
+   הסיבה. ההפניה אינה נשענת על אותו iframe, ולכן היא הנתיב הראשי במובייל. */
+const CANCELLED_SIGNIN = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request'];
 async function cloudSignIn() {
   if (!_fbAuth) { setStatus('⚠ הענן לא מוגדר'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  cloud.err = null;
   try {
+    if (mobile) { await _fbAuth.signInWithRedirect(provider); return; }
     await _fbAuth.signInWithPopup(provider);
   } catch (e) {
-    // חוסמי חלונות קופצים נפוצים במובייל — נופלים להפניה
-    if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
-      await _fbAuth.signInWithRedirect(provider);
-    } else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
-      setStatus('⚠ ההתחברות נכשלה: ' + e.code);
+    if (CANCELLED_SIGNIN.includes(e.code)) return;
+    if (!mobile) {
+      try { await _fbAuth.signInWithRedirect(provider); return; } catch (e2) { e = e2; }
     }
+    // הקוד לבדו ("auth/internal-error") אינו מספיק כדי לאבחן, ולכן גם ההודעה
+    cloud.err = `ההתחברות נכשלה: ${e.code || ''}${e.message ? ' — ' + e.message : ''}`.trim();
+    renderCloud();
+    setStatus('⚠ ' + cloud.err);
   }
 }
 async function cloudSignOut() {
@@ -1996,7 +2011,10 @@ function renderCloud() {
   }
   const when = cloud.lastSync ? new Date(cloud.lastSync).toLocaleString('he-IL') : 'טרם סונכרן';
   if (!cloud.user) {
-    el.innerHTML = `<div class="disc" style="margin-top:0">התחבר כדי לסנכרן בין מכשירים. המסמכים מוצפנים במכשיר לפני העלייה — Google מאחסן אותם אך לא יכול לקרוא אותם.</div>
+    // שגיאת התחברות הוצגה עד כה רק כהודעת סטטוס חולפת, כלומר נעלמה בדיוק
+    // כשהמשתמש ניסה לקרוא אותה. כאן היא נשארת על המסך עד הניסיון הבא.
+    el.innerHTML = `<div class="disc" style="margin-top:0">התחבר כדי לסנכרן בין מכשירים. המסמכים מוצפנים במכשיר לפני העלייה — Google מאחסן אותם אך לא יכול לקרוא אותם.
+      ${cloud.err ? `<br><span style="color:#ff6b6b">⚠ ${escH(cloud.err)}</span>` : ''}</div>
       <button class="btn" onclick="cloudSignIn()">🔵 התחבר עם Google</button>`;
     return;
   }
