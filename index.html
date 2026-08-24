@@ -30,109 +30,363 @@
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #0f1420; color: #e8e8e8; padding-bottom: 130px; }
-  header { padding: 14px 16px; background: #1a2130; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-  h1 { font-size: 17px; color: #fff; }
-  .sub { font-size: 11px; color: #8b93a7; }
-  .tabs { display: flex; gap: 4px; margin-top: 10px; }
-  .tab { flex: 1; padding: 9px 2px; text-align: center; background: #232b3d; border-radius: 8px; font-size: 11.5px; cursor: pointer; border: none; color: #cbd2e0; position: relative; }
-  .tab.active { background: #ff7a00; color: #fff; font-weight: bold; }
-  .tab .bdg { position: absolute; top: -5px; left: -3px; background: #ff6b6b; color: #fff; font-size: 10px; min-width: 17px; height: 17px; line-height: 17px; border-radius: 9px; font-weight: bold; }
-  main { padding: 14px; }
-  .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
-  .kpi { flex: 1; background: #1a2130; border-radius: 10px; padding: 9px 4px; text-align: center; }
-  .kpi span { display: block; font-size: 10px; color: #8b93a7; }
-  .kpi b { font-size: 14px; color: #fff; }
-  .kpi.pos b { color: #4ade80; } .kpi.neg b { color: #ff6b6b; }
-  form, .panel { background: #1a2130; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
-  label { display: block; font-size: 12px; color: #8b93a7; margin: 8px 0 3px; }
-  input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #2a3145; background: #0f1420; color: #fff; font-size: 15px; }
-  .row2 { display: flex; gap: 8px; } .row2 > div { flex: 1; }
-  .btn { display: block; width: 100%; padding: 12px; background: #ff7a00; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; margin-top: 12px; cursor: pointer; }
-  .btn.sec { background: #232b3d; font-size: 13px; padding: 10px; margin-top: 8px; }
-  .quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
-  .qbtn { white-space: nowrap; padding: 8px 12px; background: #232b3d; border: 1px solid #3a4560; border-radius: 20px; color: #ffb366; font-size: 12px; cursor: pointer; }
-  .attach-zone { margin-top: 10px; padding: 10px; border: 1px dashed #3a4560; border-radius: 8px; text-align: center; font-size: 13px; color: #8b93a7; cursor: pointer; }
-  .attach-zone.has { border-color: #4ade80; color: #4ade80; }
-  .entry { background: #1a2130; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
-  .entry-top { display: flex; justify-content: space-between; align-items: center; }
-  .entry .inf { font-size: 13px; flex: 1; }
-  .entry .inf b { display: block; font-size: 14px; color: #fff; }
-  .entry .inf span { color: #8b93a7; font-size: 11px; }
-  .entry .amt { font-weight: bold; font-size: 15px; white-space: nowrap; margin-right: 8px; }
-  .entry .amt.in { color: #4ade80; } .entry .amt.out { color: #ff6b6b; }
-  .entry-actions { display: flex; gap: 6px; margin-top: 8px; }
-  .chip { flex: 1; padding: 7px; border-radius: 7px; border: none; background: #232b3d; color: #cbd2e0; font-size: 12px; cursor: pointer; }
-  .chip.green { color: #4ade80; } .chip.red { color: #ff6b6b; }
-  .alert { border-radius: 10px; padding: 12px; margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
-  .alert b { display: block; margin-bottom: 2px; }
-  .alert.warn { background: #3a2416; border-right: 3px solid #ff9d3d; }
-  .alert.crit { background: #3a1616; border-right: 3px solid #ff6b6b; }
-  .alert.ok { background: #14351f; border-right: 3px solid #4ade80; }
-  .alert.info { background: #16243a; border-right: 3px solid #4dabf7; }
-  .alert .abtn { margin-top: 8px; padding: 7px 14px; background: #ff7a00; border: none; border-radius: 7px; color: #fff; font-size: 12px; font-weight: bold; cursor: pointer; }
-  .prog { height: 14px; background: #232b3d; border-radius: 7px; overflow: hidden; margin: 6px 0 3px; }
-  .prog i { display: block; height: 100%; background: linear-gradient(90deg, #4ade80, #ff9d3d, #ff6b6b); }
-  .cat-sum { background: #1a2130; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 13px; gap: 6px; flex-wrap: wrap; }
-  .taxrow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #232b3d; font-size: 13px; }
+  /* ===== מערכת העיצוב =====
+     ערכים חוזרים יושבים כאן ולא מפוזרים בקובץ, כדי ששינוי גוון או ריווח
+     יהיה עריכה אחת. הגופן הוא גופן המערכת במכוון: האפליקציה עובדת אופליין
+     ותחת default-src 'none', וגופן חיצוני היה שובר את שניהם עבור הבדל
+     שנעלם ברגע שהרשת נופלת. */
+  :root {
+    --bg: #0b0f1a;          --bg-2: #10162a;
+    --surface: #151d33;     --surface-2: #1c2745;   --surface-3: #2b3961;
+    --line: #26314f;        --line-soft: #1e2740;
+    --txt: #eef1f8;         --txt-2: #a3adc4;       --txt-3: #6f7a94;
+    --brand: #ff8a1f;       --brand-2: #ff6a00;     --brand-soft: #3a2412;
+    --pos: #34d399;         --pos-soft: #0f3327;
+    --neg: #fb7185;         --neg-soft: #3a1620;
+    --info: #60a5fa;        --info-soft: #14243f;
+    --warn: #fbbf24;        --warn-soft: #33260d;
+    --r-s: 8px; --r-m: 12px; --r-l: 16px; --r-xl: 20px;
+    --sh-1: 0 1px 2px rgba(0,0,0,.3);
+    --sh-2: 0 4px 16px rgba(0,0,0,.35);
+    --sh-3: 0 12px 40px rgba(0,0,0,.5);
+    --ease: cubic-bezier(.4,0,.2,1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Rubik, "Noto Sans Hebrew", Arial, sans-serif;
+    background: var(--bg); color: var(--txt);
+    /* גובה הסרגל התחתון נמדד בפועל ולא מנוחש: הוא משתנה עם אורך הכפתורים
+       ועם גודל הגופן של המכשיר, וכל ניחוש קבוע מסתיר את הרשומה האחרונה. */
+    padding-bottom: calc(var(--footer-h, 150px) + 16px + env(safe-area-inset-bottom));
+    -webkit-font-smoothing: antialiased; line-height: 1.45;
+  }
+  /* סכומים בגופן טבלאי: בלעדיו הספרות משנות רוחב והעמודות רוקדות */
+  .kpi b, .amt, .taxrow b, .bracket, .cat-sum, #rec-code { font-variant-numeric: tabular-nums; }
+
+  /* ===== ראש הדף ===== */
+  header {
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    background: linear-gradient(180deg, #1a2440 0%, var(--surface) 100%);
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 1px solid var(--line-soft);
+    box-shadow: var(--sh-2);
+  }
+  h1 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+  .sub { font-size: 11px; color: var(--txt-3); margin-top: 2px; }
+
+  /* ===== טאבים ===== */
+  .tabs {
+    display: flex; gap: 5px; margin-top: 12px;
+    overflow-x: auto; scrollbar-width: none; padding-bottom: 2px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  /* שבעה טאבים חייבים להיכנס ברוחב טלפון. flex בסיס 0 מאפשר להם להתכווץ
+     יחד במקום שהאחרון ייחתך מחוץ למסך, וה-overflow נשאר כרשת ביטחון
+     למכשירים צרים במיוחד. */
+  .tab {
+    flex: 1 1 auto; min-width: 0; padding: 9px 6px; text-align: center;
+    background: var(--surface-2); border-radius: var(--r-s);
+    font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+    color: var(--txt-2); position: relative; white-space: nowrap;
+    /* בלי overflow:hidden — תג ההתראה יושב מחוץ לגבולות הכפתור בכוונה,
+       וחיתוך היה מסתיר בדיוק את המספר שהוא נועד להבליט. */
+    transition: background .18s var(--ease), color .18s var(--ease), transform .12s var(--ease);
+    font-family: inherit;
+  }
+  .tab:hover { background: #22304f; color: var(--txt); }
+  .tab:active { transform: scale(.96); }
+  .tab.active {
+    background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+    color: #fff; border-color: rgba(255,255,255,.14);
+    box-shadow: 0 2px 10px rgba(255,122,0,.35);
+  }
+  .tab .bdg {
+    position: absolute; top: -6px; left: -4px; background: var(--neg); color: #1a0710;
+    font-size: 10px; min-width: 18px; height: 18px; line-height: 18px;
+    border-radius: 9px; font-weight: 800; box-shadow: var(--sh-1);
+  }
+
+  main { padding: 14px; max-width: 720px; margin: 0 auto; }
+
+  /* ===== כרטיסי סיכום ===== */
+  .kpis { display: flex; gap: 8px; margin-bottom: 14px; }
+  .kpi {
+    flex: 1; background: var(--surface); border: 1px solid var(--line-soft);
+    border-radius: var(--r-m); padding: 11px 6px; text-align: center;
+    position: relative; overflow: hidden; box-shadow: var(--sh-1);
+  }
+  /* פס צבע דק במקום למלא את הכרטיס: מסמן בלי להצעוק */
+  .kpi::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--txt-3); opacity: .5; }
+  .kpi.pos::before { background: var(--pos); opacity: 1; }
+  .kpi.neg::before { background: var(--neg); opacity: 1; }
+  .kpi span { display: block; font-size: 10px; color: var(--txt-3); margin-bottom: 3px; font-weight: 500; }
+  .kpi b { font-size: 15px; color: #fff; font-weight: 700; letter-spacing: -.3px; }
+  .kpi.pos b { color: var(--pos); } .kpi.neg b { color: var(--neg); }
+
+  /* ===== משטחים ===== */
+  form, .panel {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    border-radius: var(--r-l); padding: 14px; margin-bottom: 14px; box-shadow: var(--sh-1);
+  }
+  h3 { font-size: 13px; color: var(--brand); margin: 18px 0 9px; font-weight: 700;
+       letter-spacing: .2px; display: flex; align-items: center; gap: 6px; }
+
+  /* ===== שדות ===== */
+  label { display: block; font-size: 11.5px; color: var(--txt-3); margin: 10px 0 4px; font-weight: 500; }
+  input, select {
+    width: 100%; padding: 11px 12px; border-radius: var(--r-s);
+    border: 1px solid var(--line); background: var(--bg-2); color: #fff;
+    font-size: 15px; font-family: inherit;
+    transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  input::placeholder { color: var(--txt-3); }
+  /* מצב מיקוד היה חסר לגמרי — ניווט במקלדת היה עיוור */
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(255,138,31,.16);
+  }
+  button:focus-visible, .tab:focus-visible, .chip:focus-visible, .qbtn:focus-visible,
+  .fchip:focus-visible, .rc:focus-visible, .vbtn:focus-visible {
+    outline: 2px solid var(--brand); outline-offset: 2px;
+  }
+  .row2 { display: flex; gap: 9px; } .row2 > div { flex: 1; min-width: 0; }
+
+  /* ===== כפתורים ===== */
+  .btn {
+    display: block; width: 100%; padding: 13px; border: none; border-radius: var(--r-m);
+    background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+    color: #fff; font-size: 15px; font-weight: 700; margin-top: 12px; cursor: pointer;
+    font-family: inherit; box-shadow: 0 2px 10px rgba(255,122,0,.28);
+    transition: transform .12s var(--ease), box-shadow .18s var(--ease), filter .18s var(--ease);
+  }
+  .btn:hover { filter: brightness(1.07); }
+  .btn:active { transform: translateY(1px) scale(.995); box-shadow: 0 1px 4px rgba(255,122,0,.3); }
+  .btn:disabled { opacity: .5; cursor: default; box-shadow: none; filter: none; }
+  .btn.sec {
+    background: var(--surface-2); border: 1px solid var(--line);
+    font-size: 13.5px; padding: 11px; margin-top: 8px; box-shadow: none; color: var(--txt);
+  }
+  .btn.sec:hover { background: #22304f; }
+
+  .quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 5px; margin-bottom: 10px; scrollbar-width: none; }
+  .quick::-webkit-scrollbar { display: none; }
+  .qbtn {
+    white-space: nowrap; padding: 8px 14px; background: var(--brand-soft);
+    border: 1px solid #4d3115; border-radius: 999px; color: #ffb366;
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: background .16s var(--ease);
+  }
+  .qbtn:hover { background: #4a2e14; }
+
+  .attach-zone {
+    margin-top: 12px; padding: 14px; border: 1.5px dashed var(--line);
+    border-radius: var(--r-m); text-align: center; font-size: 13px;
+    color: var(--txt-3); cursor: pointer; transition: all .18s var(--ease);
+  }
+  .attach-zone:hover { border-color: var(--brand); color: var(--txt-2); background: rgba(255,138,31,.04); }
+  .attach-zone.has { border-color: var(--pos); color: var(--pos); background: rgba(52,211,153,.06); border-style: solid; }
+
+  /* ===== שורות ===== */
+  .entry {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    border-radius: var(--r-m); padding: 11px 13px; margin-bottom: 8px;
+    position: relative; overflow: hidden; box-shadow: var(--sh-1);
+    transition: border-color .16s var(--ease);
+  }
+  .entry:hover { border-color: var(--line); }
+  .entry-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .entry .inf { font-size: 13px; flex: 1; min-width: 0; }
+  .entry .inf b { display: block; font-size: 14px; color: #fff; font-weight: 600;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entry .inf span { color: var(--txt-3); font-size: 11px; }
+  .entry .amt { font-weight: 700; font-size: 15.5px; white-space: nowrap; letter-spacing: -.3px; }
+  .entry .amt.in { color: var(--pos); } .entry .amt.out { color: var(--neg); }
+  .entry-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .chip {
+    flex: 1; padding: 8px; border-radius: var(--r-s); border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--txt-2); font-size: 12px;
+    font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: background .16s var(--ease);
+  }
+  .chip:hover { background: #22304f; }
+  .chip.green { color: var(--pos); } .chip.red { color: var(--neg); }
+
+  /* ===== התראות ===== */
+  .alert {
+    border-radius: var(--r-m); padding: 13px 14px; margin-bottom: 9px;
+    font-size: 13px; line-height: 1.55; border: 1px solid transparent;
+    border-right-width: 3px;
+  }
+  .alert b { display: block; margin-bottom: 3px; font-weight: 700; font-size: 13.5px; }
+  .alert.warn { background: var(--warn-soft); border-color: #4d3c14; border-right-color: var(--warn); color: #fde68a; }
+  .alert.crit { background: var(--neg-soft); border-color: #4d1f2a; border-right-color: var(--neg); color: #fecdd3; }
+  .alert.ok   { background: var(--pos-soft); border-color: #14503b; border-right-color: var(--pos); color: #a7f3d0; }
+  .alert.info { background: var(--info-soft); border-color: #1c355e; border-right-color: var(--info); color: #bfdbfe; }
+  .alert .abtn {
+    margin-top: 10px; padding: 8px 16px; border: none; border-radius: var(--r-s);
+    background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+    color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+
+  .prog { height: 10px; background: var(--bg-2); border: 1px solid var(--line-soft);
+          border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+  .prog i { display: block; height: 100%; border-radius: 999px;
+            background: linear-gradient(90deg, var(--pos), var(--warn), var(--neg));
+            transition: width .5s var(--ease); }
+
+  .cat-sum {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-m);
+    padding: 11px 13px; margin-bottom: 7px; display: flex; justify-content: space-between;
+    font-size: 13px; gap: 8px; flex-wrap: wrap;
+  }
+  .taxrow { display: flex; justify-content: space-between; gap: 10px;
+            padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
   .taxrow:last-child { border: none; }
-  .taxrow b.big { font-size: 16px; color: #ff9d3d; }
-  .bracket { display: flex; justify-content: space-between; padding: 5px 8px; border-radius: 6px; font-size: 12px; margin-bottom: 3px; background: #0f1420; }
-  .bracket.cur { background: #3a2416; border: 1px solid #ff9d3d; font-weight: bold; }
-  .yearcard { background: #1a2130; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-  .yearcard h4 { font-size: 15px; color: #fff; display: flex; justify-content: space-between; }
-  .yearcard .st { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
-  .st.no { background: #3a1616; color: #ff6b6b; }
-  .st.mid { background: #3a2416; color: #ff9d3d; }
-  .st.yes { background: #14351f; color: #4ade80; }
-  .footer { position: fixed; bottom: 0; right: 0; left: 0; padding: 10px 14px; background: #1a2130; box-shadow: 0 -2px 10px rgba(0,0,0,.5); z-index: 20; }
+  .taxrow b.big { font-size: 17px; color: var(--brand); letter-spacing: -.4px; }
+  .bracket {
+    display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px;
+    border-radius: var(--r-s); font-size: 12px; margin-bottom: 4px;
+    background: var(--bg-2); border: 1px solid transparent;
+  }
+  .bracket.cur { background: var(--brand-soft); border-color: var(--brand); font-weight: 700; color: #ffd0a3; }
+
+  .yearcard {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    border-radius: var(--r-l); padding: 14px; margin-bottom: 11px; box-shadow: var(--sh-1);
+  }
+  .yearcard h4 { font-size: 15px; color: #fff; display: flex; justify-content: space-between;
+                 align-items: center; gap: 8px; font-weight: 700; }
+  .yearcard .st { font-size: 10.5px; padding: 3px 9px; border-radius: 999px; font-weight: 700; white-space: nowrap; }
+  .st.no  { background: var(--neg-soft); color: var(--neg); }
+  .st.mid { background: var(--warn-soft); color: var(--warn); }
+  .st.yes { background: var(--pos-soft); color: var(--pos); }
+
+  .footer {
+    position: fixed; bottom: 0; right: 0; left: 0; z-index: 20;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(21,29,51,.92); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line-soft); box-shadow: 0 -4px 20px rgba(0,0,0,.45);
+  }
+  .footer .btn { margin-top: 8px; }
+  .footer .btn:first-child { margin-top: 0; }
   .hidden { display: none !important; }
-  /* ארכיון */
-  .arch-bar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  .arch-bar input { flex: 1; min-width: 140px; }
-  .fchip { padding: 7px 12px; border-radius: 20px; border: 1px solid #3a4560; background: #232b3d; color: #cbd2e0; font-size: 12px; cursor: pointer; white-space: nowrap; }
-  .fchip.on { background: #ff7a00; border-color: #ff7a00; color: #fff; font-weight: bold; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; }
-  .rc { background: #1a2130; border-radius: 10px; overflow: hidden; cursor: pointer; position: relative; }
-  .rc .thumb { width: 100%; height: 95px; background: #0f1420 center/cover no-repeat; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #3a4560; }
-  .rc .meta { padding: 6px 7px; font-size: 10.5px; line-height: 1.35; }
-  .rc .meta b { display: block; font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rc .meta span { color: #8b93a7; }
-  .rc .tag { position: absolute; top: 5px; left: 5px; font-size: 9px; padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.72); }
-  .rc .tag.in { color: #4ade80; } .rc .tag.out { color: #ff6b6b; } .rc .tag.doc { color: #4dabf7; }
-  .miss { background: #3a1616; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .miss button { background: #ff7a00; border: none; border-radius: 6px; color: #fff; font-size: 11px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
-  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; }
-  .modal .pwbox { background: #1a2130; border-radius: 12px; padding: 16px; width: 100%; max-width: 360px; max-height: 92vh; overflow-y: auto; }
-  .modal b { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
-  .modal input { margin-top: 8px; }
-  #pw-err, #rec-err { color: #ff6b6b; font-size: 12px; min-height: 15px; margin-top: 6px; }
+
+  /* ===== ארכיון ===== */
+  .arch-bar { display: flex; gap: 7px; margin-bottom: 11px; flex-wrap: wrap; }
+  .arch-bar input { flex: 1; min-width: 150px; }
+  .fchip {
+    padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--txt-2); font-size: 12px;
+    font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit;
+    transition: all .16s var(--ease);
+  }
+  .fchip:hover { background: #22304f; }
+  .fchip.on {
+    background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+    border-color: transparent; color: #fff; box-shadow: 0 2px 8px rgba(255,122,0,.3);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 9px; }
+  .rc {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-m);
+    overflow: hidden; cursor: pointer; position: relative; box-shadow: var(--sh-1);
+    transition: transform .16s var(--ease), border-color .16s var(--ease);
+  }
+  .rc:hover { transform: translateY(-2px); border-color: var(--line); }
+  .rc .thumb {
+    width: 100%; height: 98px; background: var(--bg-2) center/cover no-repeat;
+    display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--line);
+  }
+  .rc .meta { padding: 7px 8px; font-size: 10.5px; line-height: 1.4; }
+  .rc .meta b { display: block; font-size: 12px; color: #fff; font-weight: 600;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rc .meta span { color: var(--txt-3); }
+  .rc .tag {
+    position: absolute; top: 6px; left: 6px; font-size: 9px; font-weight: 700;
+    padding: 2px 7px; border-radius: 999px; background: rgba(8,12,22,.85);
+    backdrop-filter: blur(4px);
+  }
+  .rc .tag.in { color: var(--pos); } .rc .tag.out { color: var(--neg); } .rc .tag.doc { color: var(--info); }
+  .miss {
+    background: var(--neg-soft); border: 1px solid #4d1f2a; border-radius: var(--r-m);
+    padding: 9px 11px; margin-bottom: 7px; font-size: 12px;
+    display: flex; justify-content: space-between; align-items: center; gap: 9px;
+  }
+  .miss button {
+    background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%);
+    border: none; border-radius: var(--r-s); color: #fff; font-size: 11px;
+    font-weight: 700; padding: 6px 12px; cursor: pointer; white-space: nowrap; font-family: inherit;
+  }
+
+  /* ===== חלונות ===== */
+  .modal {
+    position: fixed; inset: 0; background: rgba(4,7,14,.82); backdrop-filter: blur(6px);
+    z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px;
+    animation: fade .18s var(--ease);
+  }
+  .modal .pwbox {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl);
+    padding: 20px; width: 100%; max-width: 380px; max-height: 92vh; overflow-y: auto;
+    box-shadow: var(--sh-3); animation: pop .22s var(--ease);
+  }
+  .modal b { display: block; font-size: 16px; color: #fff; margin-bottom: 5px; font-weight: 700; }
+  .modal input { margin-top: 9px; }
+  @keyframes fade { from { opacity: 0 } }
+  @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.97) } }
+  #pw-err, #rec-err, #lock-err { color: var(--neg); font-size: 12px; min-height: 16px; margin-top: 7px; }
   /* קוד השחזור מוצג פעם אחת בלבד, ולכן הוא חייב להיות קריא להעתקה ידנית:
      גופן רחב-קבוע, ריווח בין תווים, ובחירה מלאה בהקשה אחת. */
-  #rec-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 17px;
-    letter-spacing: 1.5px; text-align: center; direction: ltr; background: #0f1420; color: #7ee787;
-    border: 1px solid #2c3a52; border-radius: 8px; padding: 14px 8px; margin: 10px 0; word-break: break-all;
-    user-select: all; -webkit-user-select: all; }
-  .warnbox { background: #2a1c14; border: 1px solid #7a4a1e; border-radius: 8px; padding: 10px;
-    font-size: 12px; color: #ffc48a; line-height: 1.55; margin-top: 8px; }
-  .yearbar { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
-  .yearbar label { margin: 0; font-size: 11.5px; color: #8b93a7; white-space: nowrap; }
-  .yearbar select { padding: 6px 8px; font-size: 13px; background: #232b3d; border-color: #3a4560; }
-  h3 { font-size: 14px; color: #ff9d3d; margin: 14px 0 8px; }
-  .msg { text-align: center; font-size: 12px; color: #8b93a7; padding: 14px; }
-  .status { font-size: 11px; color: #4ade80; text-align: center; margin-top: 5px; min-height: 13px; }
-  #viewer { position: fixed; inset: 0; background: rgba(0,0,0,.94); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  #rec-code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 17px;
+    letter-spacing: 1.5px; text-align: center; direction: ltr;
+    background: var(--bg); color: #7ee787; border: 1px solid #2c4a38;
+    border-radius: var(--r-m); padding: 15px 8px; margin: 12px 0; word-break: break-all;
+    user-select: all; -webkit-user-select: all; line-height: 1.6;
+  }
+  .warnbox {
+    background: var(--warn-soft); border: 1px solid #4d3c14; border-radius: var(--r-m);
+    padding: 11px 12px; font-size: 12px; color: #fde68a; line-height: 1.6; margin-top: 10px;
+  }
+
+  .yearbar { display: flex; align-items: center; gap: 9px; margin-top: 11px; }
+  .yearbar label { margin: 0; font-size: 11.5px; color: var(--txt-3); white-space: nowrap; }
+  .yearbar select { padding: 8px 10px; font-size: 13px; background: var(--surface-2); border-color: var(--line); }
+  .msg { text-align: center; font-size: 12.5px; color: var(--txt-3); padding: 22px 14px; }
+  .status { font-size: 11.5px; color: var(--pos); text-align: center; margin-top: 6px; min-height: 14px; font-weight: 600; }
+
+  /* ===== צופה הקבצים ===== */
+  #viewer { position: fixed; inset: 0; background: rgba(3,5,10,.96); z-index: 50;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)); }
   #viewer.hidden { display: none !important; }
-  #viewer-title { color: #cbd2e0; font-size: 13px; margin-bottom: 8px; text-align: center; max-width: 100%; }
-  #viewer-stage { flex: 1; width: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
-  #viewer img { max-width: 100%; max-height: 100%; border-radius: 8px; transform-origin: center center; will-change: transform; user-select: none; -webkit-user-drag: none; }
-  #viewer-tools { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; justify-content: center; }
-  .vbtn { background: #232b3d; border: 1px solid #3a4560; color: #cbd2e0; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; min-width: 44px; }
+  #viewer-title { color: var(--txt-2); font-size: 13px; margin-bottom: 10px; text-align: center; max-width: 100%; }
+  #viewer-stage { flex: 1; width: 100%; overflow: hidden; display: flex;
+                  align-items: center; justify-content: center; touch-action: none; }
+  #viewer img { max-width: 100%; max-height: 100%; border-radius: var(--r-m);
+                transform-origin: center center; will-change: transform;
+                user-select: none; -webkit-user-drag: none; box-shadow: var(--sh-3); }
+  #viewer-tools { display: flex; gap: 7px; margin: 12px 0; flex-wrap: wrap; justify-content: center; }
+  .vbtn {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--txt);
+    border-radius: var(--r-s); padding: 9px 13px; font-size: 14px; cursor: pointer;
+    min-width: 46px; font-family: inherit; transition: background .16s var(--ease);
+  }
+  .vbtn:hover:not(:disabled) { background: #22304f; }
   .vbtn:disabled { opacity: .3; cursor: default; }
   #viewer .btn { max-width: 340px; }
-  .badge { display: inline-block; font-size: 10px; background: #14351f; color: #4ade80; border-radius: 5px; padding: 1px 6px; margin-right: 5px; }
-  .disc { font-size: 10.5px; color: #8b93a7; margin-top: 6px; line-height: 1.4; }
+
+  .badge { display: inline-block; font-size: 10px; background: var(--pos-soft); color: var(--pos);
+           border-radius: 999px; padding: 2px 8px; margin-right: 5px; font-weight: 700; }
+  .disc { font-size: 11px; color: var(--txt-3); margin-top: 8px; line-height: 1.6; }
+
+  /* מכשירים גדולים: הטופס והרשימה זוכים לרוחב אמיתי במקום עמודה צרה */
+  @media (min-width: 640px) {
+    .kpi b { font-size: 17px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  }
+  /* מי שביקש פחות תנועה מקבל ממשק סטטי, לא אנימציות מוחלשות */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>
@@ -168,7 +422,7 @@
 
   <!-- הכנסות -->
   <section id="tab-in">
-    <button class="btn" style="background:#7c5cff;margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה / אישור עם AI</button>
+    <button class="btn" style="background:linear-gradient(180deg,#8b6dff,#6d47f5);box-shadow:0 2px 10px rgba(124,92,255,.3);margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה / אישור עם AI</button>
     <div class="quick" id="quick-in"></div>
     <form onsubmit="event.preventDefault(); addEntry('in'); return false;">
       <div class="row2">
@@ -197,7 +451,7 @@
 
   <!-- הוצאות -->
   <section id="tab-out" class="hidden">
-    <button class="btn" style="background:#7c5cff;margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה עם AI — מזהה סכום וקטגוריה לבד</button>
+    <button class="btn" style="background:linear-gradient(180deg,#8b6dff,#6d47f5);box-shadow:0 2px 10px rgba(124,92,255,.3);margin:0 0 10px" onclick="aiScan()">🤖 סרוק קבלה עם AI — מזהה סכום וקטגוריה לבד</button>
     <div class="quick" id="quick-out"></div>
     <form onsubmit="event.preventDefault(); addEntry('out'); return false;">
       <div class="row2">
@@ -332,6 +586,11 @@
       <div class="disc">הגיבוי כולל את כל הרשומות, הקבלות, הטפסים וההגדרות — קובץ אחד שאפשר לשמור בדרייב או לשלוח לעצמך במייל. השחזור מחזיר הכל בדיוק כפי שהיה, גם במכשיר אחר.</div>
     </div>
 
+    <h3>🔒 נעילת האפליקציה</h3>
+    <div class="panel">
+      <div id="vault-panel"></div>
+    </div>
+
     <h3>☁️ סנכרון ענן</h3>
     <div class="panel">
       <div id="cloud-panel"></div>
@@ -345,8 +604,21 @@
     <button class="btn" style="margin-top:0" onclick="exportXLSX()">📥 אקסל לרו"ח</button>
     <button class="btn sec" style="margin-top:0" onclick="exportZip()">🗂️ קבלות ZIP</button>
   </div>
-  <button class="btn" style="margin-top:8px;background:#4ade80;color:#0f1420" onclick="buildYearPackage()">📦 חבילה שנתית מלאה לרו"ח (דוח + קבלות + טפסים)</button>
+  <button class="btn" style="margin-top:8px;background:linear-gradient(180deg,#34d399,#0fae7a);color:#04140d;box-shadow:0 2px 10px rgba(52,211,153,.28)" onclick="buildYearPackage()">📦 חבילה שנתית מלאה לרו"ח (דוח + קבלות + טפסים)</button>
   <div class="status" id="status"></div>
+</div>
+
+<!-- מסך הנעילה מכסה את האפליקציה כולה. כשהכספת נעולה הנתונים כלל אינם
+     נטענים לזיכרון, ולכן אין כאן מסך שמסתיר תוכן שכבר מוצג — אין תוכן. -->
+<div id="lockscreen" class="modal hidden">
+  <div class="pwbox">
+    <b>🔒 הנה"ח נעולה</b>
+    <div class="disc" style="margin-top:0">הנתונים במכשיר מוצפנים. הזן את סיסמת הכספת כדי לפתוח אותם.</div>
+    <button class="btn" id="lock-bio" onclick="lockBio()">👆 פתח בטביעת אצבע</button>
+    <input type="password" id="lock-pass" placeholder="סיסמת הכספת" autocomplete="current-password">
+    <div id="lock-err"></div>
+    <button class="btn" onclick="lockSubmit()">🔓 פתח</button>
+  </div>
 </div>
 
 <div id="pwmodal" class="modal hidden">
@@ -562,23 +834,216 @@ function openDB() {
 const reqP  = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const txDone = t => new Promise((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('aborted')); });
 
+/* ===== הכספת המקומית =====
+   ההצפנה לענן מגנה על הנתונים אצל הספק. היא אינה מגנה על המכשיר עצמו:
+   מי שמחזיק טלפון פתוח רואה הכל. הכספת סוגרת את הפער — הרשומות, הקבצים
+   וההגדרות יושבים ב-IndexedDB מוצפנים, וללא הסיסמה הם רצף בייטים.
+
+   נקודת החנק היא שכבת ה-DB ולא נתיבי הקריאה והכתיבה שמעליה: יש עשרות
+   כאלה, ודי בכך שאחד יישכח כדי שהכספת תדלוף. כאן יש מקום אחד להגן עליו.
+
+   שלושה מפתחות ב-meta נשארים גלויים בהכרח: רשומת הכספת עצמה (היא המנעול),
+   רישום הביומטריה, ומפתח הענן — שהוא CryptoKey לא-ניתן-לייצוא ולכן אינו
+   ניתן לסריאליזציה ממילא, ואטום בפני עצמו. */
+const VAULT_META = '__vault', VAULT_BIO = '__vault_bio';
+const PLAIN_META = new Set([VAULT_META, VAULT_BIO, 'cloudDek']);
+const vault = { key: null, on: false, hasBio: false };
+
+const _tx = (store, mode) => _db.transaction(store, mode).objectStore(store);
+const isEnc = r => r && r._v === 1 && r.ct;
+
+async function vEnc(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vault.key,
+    new TextEncoder().encode(JSON.stringify(obj)));
+  return { iv: toB64(iv), ct: toB64(ct) };
+}
+async function vDec(rec) {
+  const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, vault.key, fromB64(rec.ct));
+  return JSON.parse(new TextDecoder().decode(out));
+}
+async function vEncBytes(buf) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  return { biv: toB64(iv), bct: await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vault.key, buf) };
+}
+const vDecBytes = rec =>
+  crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.biv) }, vault.key, rec.bct);
+
+/* עוטף רשומה לכתיבה. כשהכספת כבויה הרשומה נשמרת כפי שהיא, כך שהאפליקציה
+   מתנהגת בדיוק כמו קודם למי שלא הפעיל אותה. */
+async function encEntry(e)  { return vault.key ? { id: e.id, _v: 1, ...(await vEnc(e)) } : e; }
+async function decEntry(r)  { return isEnc(r) ? vDec(r) : r; }
+async function encMeta(k, v) { return (vault.key && !PLAIN_META.has(k)) ? { k, _v: 1, ...(await vEnc(v)) } : { k, v }; }
+async function decMeta(r)   { return isEnc(r) ? vDec(r) : r.v; }
+
+async function encFile(key, blob, name) {
+  const base = { key, name: name || '', type: blob.type, size: blob.size, ts: Date.now() };
+  if (!vault.key) return { ...base, blob };
+  const { biv, bct } = await vEncBytes(await blob.arrayBuffer());
+  // גם שם הקובץ וסוגו מוצפנים: "אישור ניכוי מס במקור.pdf" הוא מידע בפני עצמו
+  return { key, _v: 1, biv, bct, ...(await vEnc(base)) };
+}
+async function decFile(r) {
+  if (!isEnc(r)) return r;
+  const head = await vDec(r);
+  return { ...head, blob: new Blob([await vDecBytes(r)], { type: head.type || 'application/octet-stream' }) };
+}
+
 const DB = {
-  allEntries:  ()        => reqP(_db.transaction('entries','readonly').objectStore('entries').getAll()),
-  async putEntry(e)      { const t = _db.transaction('entries','readwrite'); t.objectStore('entries').put(e); await txDone(t); },
-  async putEntries(list) { const t = _db.transaction('entries','readwrite'); const s = t.objectStore('entries'); list.forEach(e => s.put(e)); await txDone(t); },
+  async allEntries()     { const all = await reqP(_tx('entries','readonly').getAll()); return Promise.all(all.map(decEntry)); },
+  async putEntry(e)      { const rec = await encEntry(e); const t = _db.transaction('entries','readwrite'); t.objectStore('entries').put(rec); await txDone(t); },
+  async putEntries(list) { const recs = await Promise.all(list.map(encEntry)); const t = _db.transaction('entries','readwrite'); const s = t.objectStore('entries'); recs.forEach(r => s.put(r)); await txDone(t); },
   async delEntry(id)     { const t = _db.transaction('entries','readwrite'); t.objectStore('entries').delete(id); await txDone(t); },
 
-  async getMeta(k, def)  { const r = await reqP(_db.transaction('meta','readonly').objectStore('meta').get(k)); return r === undefined ? def : r.v; },
-  async setMeta(k, v)    { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put({ k, v }); await txDone(t); },
-  async setMetaMany(obj) { const t = _db.transaction('meta','readwrite'); const s = t.objectStore('meta'); Object.entries(obj).forEach(([k,v]) => s.put({ k, v })); await txDone(t); },
+  async getMeta(k, def)  { const r = await reqP(_tx('meta','readonly').get(k)); return r === undefined ? def : decMeta(r); },
+  async setMeta(k, v)    { const rec = await encMeta(k, v); const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put(rec); await txDone(t); },
+  async setMetaMany(obj) {
+    const recs = await Promise.all(Object.entries(obj).map(([k, v]) => encMeta(k, v)));
+    const t = _db.transaction('meta','readwrite'); const s = t.objectStore('meta');
+    recs.forEach(r => s.put(r)); await txDone(t);
+  },
 
-  async putFile(key, blob, name) { const t = _db.transaction('files','readwrite'); t.objectStore('files').put({ key, blob, name: name||'', type: blob.type, size: blob.size, ts: Date.now() }); await txDone(t); },
-  getFile:  key => reqP(_db.transaction('files','readonly').objectStore('files').get(key)),
-  allFiles: ()  => reqP(_db.transaction('files','readonly').objectStore('files').getAll()),
+  async putFile(key, blob, name) { const rec = await encFile(key, blob, name); const t = _db.transaction('files','readwrite'); t.objectStore('files').put(rec); await txDone(t); },
+  async getFile(key)     { const r = await reqP(_tx('files','readonly').get(key)); return r === undefined ? undefined : decFile(r); },
+  async allFiles()       { const all = await reqP(_tx('files','readonly').getAll()); return Promise.all(all.map(decFile)); },
   async delFile(key)     { const t = _db.transaction('files','readwrite'); t.objectStore('files').delete(key); await txDone(t); },
 
   async clearAll()       { const t = _db.transaction(['entries','files','meta'],'readwrite'); ['entries','files','meta'].forEach(n => t.objectStore(n).clear()); await txDone(t); },
+
+  /* גישה גולמית, לשימוש הכספת בלבד: היא חייבת לקרוא ולכתוב את רשומת
+     המנעול שלה לפני שיש מפתח כלשהו. */
+  async rawMetaGet(k)    { const r = await reqP(_tx('meta','readonly').get(k)); return r === undefined ? null : r.v; },
+  async rawMetaPut(k, v) { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').put({ k, v }); await txDone(t); },
+  async rawMetaDel(k)    { const t = _db.transaction('meta','readwrite'); t.objectStore('meta').delete(k); await txDone(t); },
+  rawEntries: ()         => reqP(_tx('entries','readonly').getAll()),
+  rawFiles:   ()         => reqP(_tx('files','readonly').getAll()),
+  rawMetaAll: ()         => reqP(_tx('meta','readonly').getAll()),
 };
+
+/* ===== מנעול הכספת ===== */
+async function vaultLoad() {
+  const rec = await DB.rawMetaGet(VAULT_META);
+  vault.on = !!rec;
+  vault.hasBio = !!(await DB.rawMetaGet(VAULT_BIO));
+  return rec;
+}
+/* extractable: המפתח נעטף מחדש בכל החלפת סיסמה ובכל רישום ביומטרי */
+async function vaultUnlock(pass) {
+  const rec = await DB.rawMetaGet(VAULT_META);
+  if (!rec) return false;
+  const kek = await deriveKek(pass, fromB64(rec.salt), rec.iterations || PBKDF2_ITER);
+  vault.key = await crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), kek,
+    { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
+    true, ['encrypt', 'decrypt']);
+  return true;
+}
+async function vaultWriteLock(key, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const kek = await deriveKek(pass, salt, PBKDF2_ITER);
+  const wrapped = await crypto.subtle.wrapKey('raw', key, kek, { name: 'AES-GCM', iv });
+  await DB.rawMetaPut(VAULT_META, { salt: toB64(salt), iv: toB64(iv), wrapped: toB64(wrapped),
+                                    iterations: PBKDF2_ITER, version: 1 });
+}
+
+/* הפעלה: כל מה שכבר שמור נקרא גלוי, ואז נכתב מחדש מוצפן. הקריאה חייבת
+   לקדום להצבת המפתח — אחרת שכבת ה-DB תנסה לפענח רשומות שעדיין גלויות. */
+async function vaultEnable(pass) {
+  const entries = await DB.rawEntries();
+  const files   = await DB.rawFiles();
+  const metas   = await DB.rawMetaAll();
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  vault.key = key;
+  try {
+    if (entries.length) await DB.putEntries(entries.filter(e => !isEnc(e)));
+    for (const f of files) if (!isEnc(f) && f.blob) await DB.putFile(f.key, f.blob, f.name);
+    for (const m of metas) {
+      if (PLAIN_META.has(m.k) || isEnc(m)) continue;
+      await DB.setMeta(m.k, m.v);
+    }
+    await vaultWriteLock(key, pass);
+  } catch (e) {
+    vault.key = null;            // מיגרציה חלקית לא תישאר עם מנעול שאי אפשר לפתוח
+    throw e;
+  }
+  vault.on = true;
+}
+/* ביטול: פענוח חזרה לגלוי. הרשומות נקראות דרך DB (כלומר מפוענחות) ואז
+   נכתבות אחרי שהמפתח הוסר. */
+async function vaultDisable() {
+  const entries = await DB.allEntries();
+  const files   = await DB.allFiles();
+  const rawMeta = await DB.rawMetaAll();
+  const metas = [];
+  for (const m of rawMeta) {
+    if (PLAIN_META.has(m.k)) continue;
+    metas.push([m.k, isEnc(m) ? await vDec(m) : m.v]);
+  }
+  vault.key = null;
+  if (entries.length) await DB.putEntries(entries);
+  for (const f of files) if (f.blob) await DB.putFile(f.key, f.blob, f.name);
+  for (const [k, v] of metas) await DB.setMeta(k, v);
+  await DB.rawMetaDel(VAULT_META);
+  await DB.rawMetaDel(VAULT_BIO);
+  vault.on = false; vault.hasBio = false;
+}
+
+/* ===== פתיחה ביומטרית =====
+   הביומטריה שווה משהו רק אם היא מספקת חומר מפתח אמיתי. תוסף ה-PRF של
+   WebAuthn עושה בדיוק זאת: המאמת גוזר סוד קבוע שאינו יוצא ממנו, ובו נעטף
+   מפתח הכספת. בלי PRF היינו נאלצים להשאיר את המפתח נגיש ולשים מעליו רק
+   שאלה — מחסום שנראה כמו הגנה ואינו הגנה. לכן, אם התוסף אינו נתמך,
+   ההצעה נדחית במפורש במקום להתחזות. */
+const bioSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
+const prfKey = bits => crypto.subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, ['wrapKey', 'unwrapKey']);
+
+async function bioRegister() {
+  if (!vault.key) throw new Error('הכספת נעולה');
+  if (!bioSupported()) throw new Error('המכשיר אינו תומך בזיהוי ביומטרי בדפדפן');
+  const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+  const userId = crypto.getRandomValues(new Uint8Array(16));
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'הנהלת חשבונות' },
+    user: { id: userId, name: 'vault', displayName: 'כספת מקומית' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    extensions: { prf: {} },
+    timeout: 60000,
+  }});
+  if (!cred) throw new Error('הרישום בוטל');
+  const ext = cred.getClientExtensionResults();
+  if (!ext.prf || ext.prf.enabled === false) throw new Error('PRF_UNSUPPORTED');
+  const credId = toB64(cred.rawId);
+  // הסוד עצמו מתקבל רק מאימות, ולא מהרישום — ולכן נדרשת פעולה שנייה
+  const bits = await bioSecret(credId, prfSalt);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const wrapped = await crypto.subtle.wrapKey('raw', vault.key, await prfKey(bits), { name: 'AES-GCM', iv });
+  await DB.rawMetaPut(VAULT_BIO, { credId, prfSalt: toB64(prfSalt), iv: toB64(iv), wrapped: toB64(wrapped) });
+  vault.hasBio = true;
+}
+async function bioSecret(credId, prfSalt) {
+  const assertion = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ id: fromB64(credId), type: 'public-key' }],
+    userVerification: 'required',
+    extensions: { prf: { eval: { first: prfSalt } } },
+    timeout: 60000,
+  }});
+  const res = assertion && assertion.getClientExtensionResults().prf;
+  if (!res || !res.results || !res.results.first) throw new Error('PRF_UNSUPPORTED');
+  return res.results.first;
+}
+async function bioUnlock() {
+  const rec = await DB.rawMetaGet(VAULT_BIO);
+  if (!rec) throw new Error('לא נרשם זיהוי ביומטרי');
+  const lock = await DB.rawMetaGet(VAULT_META);
+  const bits = await bioSecret(rec.credId, fromB64(rec.prfSalt));
+  vault.key = await crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), await prfKey(bits),
+    { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
+    true, ['encrypt', 'decrypt']);
+  return !!lock;
+}
 
 /* ===== אחסון קבוע ומצב תפוסה ===== */
 async function ensurePersistent() {
@@ -626,6 +1091,10 @@ async function load() {
     applyLoadedSettings(); render();
     return;
   }
+  await vaultLoad();
+  // נעול = לא נטען דבר. זו ההבחנה בין כספת למסך שמסתיר תוכן טעון.
+  if (vault.on && !vault.key) { showLock(); return; }
+  hideLock();
   try {
     // data.entries מחזיק רשומות חיות בלבד; ה-tombstones נשארים ב-DB לצורך הסנכרון
     const all = await DB.allEntries();
@@ -645,6 +1114,63 @@ async function load() {
   applyLoadedSettings();
   render();
 }
+/* ===== מסך הנעילה ===== */
+function showLock() {
+  const el = document.getElementById('lockscreen');
+  if (!el) return;
+  document.getElementById('lock-bio').classList.toggle('hidden', !vault.hasBio);
+  document.getElementById('lock-err').textContent = '';
+  document.getElementById('lock-pass').value = '';
+  el.classList.remove('hidden');
+  if (vault.hasBio) lockBio();        // הדרך המהירה מוצעת מיד, ההקלדה נשארת כגיבוי
+}
+function hideLock() {
+  const el = document.getElementById('lockscreen');
+  if (el) { el.classList.add('hidden'); document.getElementById('lock-pass').value = ''; }
+}
+async function lockSubmit() {
+  const pass = document.getElementById('lock-pass').value;
+  const err = document.getElementById('lock-err');
+  if (!pass) { err.textContent = 'הזן סיסמה'; return; }
+  try {
+    await vaultUnlock(pass);
+  } catch (e) { err.textContent = 'סיסמה שגויה'; return; }
+  hideLock();
+  await load();
+  renderVault(); renderCloud(); initCloud();
+}
+async function lockBio() {
+  const err = document.getElementById('lock-err');
+  err.textContent = '';
+  try {
+    await bioUnlock();
+  } catch (e) {
+    // ביטול של המשתמש אינו תקלה, ולכן אינו מוצג כשגיאה
+    if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return;
+    err.textContent = e.message === 'PRF_UNSUPPORTED'
+      ? 'הזיהוי הביומטרי אינו זמין כאן — פתח עם הסיסמה' : (e.message || 'הפתיחה נכשלה');
+    return;
+  }
+  hideLock();
+  await load();
+  renderVault(); renderCloud(); initCloud();
+}
+document.getElementById('lock-pass').addEventListener('keydown', e => { if (e.key === 'Enter') lockSubmit(); });
+
+/* נעילה מיידית: מנקה את המפתח ואת הנתונים מהזיכרון, לא רק מסתירה מסך */
+function vaultLockNow() {
+  if (!vault.on) return;
+  vault.key = null;
+  data.entries = [];
+  data.docFiles = {}; data.extraFiles = [];
+  render();
+  showLock();
+}
+/* יציאה מהאפליקציה נועלת. זה הרגע שבו הטלפון עובר ידיים בפועל. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && vault.on && vault.key) vaultLockNow();
+});
+
 function applyLoadedSettings() {
   document.getElementById('set-points').value = data.settings.points;
   document.getElementById('set-bl').value = data.settings.includeBL ? '1' : '0';
@@ -1291,10 +1817,34 @@ function render() {
   renderArchive();
 }
 
+/* הסרגל התחתון קבוע במקומו, ולכן התוכן חייב להסתיים מעליו. הגובה נמדד
+   ולא נקבע מראש: הוא משתנה עם גלישת שורה בכפתורים ועם גודל הגופן שהמשתמש
+   הגדיר במכשיר, וכל קבוע היה מסתיר את הרשומה האחרונה אצל חלק מהמשתמשים. */
+function trackFooter() {
+  const f = document.querySelector('.footer');
+  if (!f) return;
+  const set = () => document.documentElement.style.setProperty('--footer-h', f.offsetHeight + 'px');
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(f);
+  window.addEventListener('resize', set);
+}
+
+const TABS = ['in','out','arch','alerts','tax','docs','sum'];
+/* הטאב הפעיל נשמר ב-sessionStorage ולא ב-IndexedDB: זו העדפת תצוגה רגעית,
+   ולא נתון שצריך לשרוד סגירת דפדפן, להיכנס לגיבוי או להיות מוצפן בכספת. */
 function showTab(t, el) {
-  ['in','out','arch','alerts','tax','docs','sum'].forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
+  TABS.forEach(x => document.getElementById('tab-'+x).classList.toggle('hidden', x!==t));
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  if (el) el.classList.add('active');
+  const btn = el || document.getElementById('tb-'+t);
+  if (btn) btn.classList.add('active');
+  try { sessionStorage.setItem('hh-tab', t); } catch {}
+  // הארכיון בונה את הרשת בעצלתיים; בלי הרענון הזה הוא חוזר ריק אחרי טעינה
+  if (t === 'arch' && typeof renderArchive === 'function') renderArchive();
+}
+function restoreTab() {
+  let t = null;
+  try { t = sessionStorage.getItem('hh-tab'); } catch {}
+  if (t && TABS.includes(t)) showTab(t);
 }
 
 /* ===== ייצוא ===== */
@@ -2253,6 +2803,68 @@ async function cloudNewRecovery() {
   } catch (e) { setStatus('⚠ ' + (e.message || e)); }
 }
 
+/* ===== תצוגת מצב הכספת ===== */
+function renderVault() {
+  const el = document.getElementById('vault-panel');
+  if (!el) return;
+  if (!vault.on) {
+    el.innerHTML = `<div class="disc" style="margin-top:0">כרגע <b>אין נעילה</b>. מי שפותח את האפליקציה במכשיר הזה רואה את כל ההכנסות, הקבלות והטפסים.<br>
+      ההצפנה לענן מגנה על הנתונים אצל Google — לא על המכשיר שביד.</div>
+      <button class="btn" onclick="vaultTurnOn()">🔒 הפעל נעילה והצפנה במכשיר</button>`;
+    return;
+  }
+  el.innerHTML = `<div class="disc" style="margin-top:0">✅ <b>הכספת פעילה.</b> הנתונים במכשיר מוצפנים, והאפליקציה ננעלת ביציאה ממנה.<br>
+      זיהוי ביומטרי: ${vault.hasBio ? '<b style="color:#7ee787">רשום</b>' : 'לא רשום'}</div>
+    ${vault.hasBio
+      ? '<button class="btn sec" onclick="vaultBioRemove()">הסר זיהוי ביומטרי</button>'
+      : '<button class="btn" onclick="vaultBioAdd()">👆 הוסף טביעת אצבע / זיהוי פנים</button>'}
+    <button class="btn sec" onclick="vaultLockNow()">🔒 נעל עכשיו</button>
+    <button class="btn sec" onclick="vaultTurnOff()">בטל את הנעילה</button>`;
+}
+
+async function vaultTurnOn() {
+  if (!_db) { setStatus('⚠ אין אחסון'); return; }
+  const pass = await askPassword({
+    title: '🔒 סיסמת הכספת', confirm: true,
+    desc: 'סיסמה זו מצפינה את הנתונים במכשיר עצמו. בלעדיה הם אינם קריאים — גם לא לך. גבה לקובץ ZIP לפני שאתה ממשיך.',
+  });
+  if (!pass) return;
+  setStatus('מצפין את הנתונים במכשיר...');
+  try {
+    await vaultEnable(pass);
+    renderVault();
+    setStatus('🔒 הכספת הופעלה');
+    if (bioSupported()) await vaultBioAdd();
+  } catch (e) { setStatus('⚠ ההפעלה נכשלה: ' + (e.message || e)); }
+}
+async function vaultTurnOff() {
+  if (!vault.key) { setStatus('⚠ הכספת נעולה'); return; }
+  if (!confirm('לבטל את הנעילה? הנתונים במכשיר יישמרו שוב ללא הצפנה, וכל מי שפותח את האפליקציה יראה אותם.')) return;
+  try {
+    await vaultDisable();
+    renderVault();
+    setStatus('הנעילה בוטלה');
+  } catch (e) { setStatus('⚠ הביטול נכשל: ' + (e.message || e)); }
+}
+async function vaultBioAdd() {
+  try {
+    await bioRegister();
+    renderVault();
+    setStatus('👆 הזיהוי הביומטרי נרשם');
+  } catch (e) {
+    if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return;
+    setStatus(e.message === 'PRF_UNSUPPORTED'
+      ? '⚠ הדפדפן הזה אינו תומך בגזירת מפתח מהביומטריה. הכספת פעילה עם סיסמה בלבד.'
+      : '⚠ ' + (e.message || e));
+  }
+}
+async function vaultBioRemove() {
+  await DB.rawMetaDel(VAULT_BIO);
+  vault.hasBio = false;
+  renderVault();
+  setStatus('הזיהוי הביומטרי הוסר');
+}
+
 /* ===== תצוגת מצב הענן ===== */
 function renderCloud() {
   const el = document.getElementById('cloud-panel');
@@ -2530,7 +3142,15 @@ window.addEventListener('keydown', e => {
 /* ===== אתחול ===== */
 document.getElementById('in-date').value  = localISO();
 document.getElementById('out-date').value = localISO();
-load().then(() => { renderCloud(); initCloud(); });
+load().then(() => {
+  trackFooter();
+  restoreTab();
+  renderVault();
+  // כשהכספת נעולה אין טעם לאתחל את הענן: אין מפתח, אין מה לסנכרן, וכל
+  // מה שזה ישיג הוא בקשות רשת מאחורי מסך נעילה.
+  if (vault.on && !vault.key) return;
+  renderCloud(); initCloud();
+});
 </script>
 </body>
 </html>

@@ -42,8 +42,12 @@ const check = (name, cond, note = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${note ? `  (${note})` : ''}`);
 };
 
+/* מסך טלפון ולא ברירת המחדל של שולחן העבודה: זו האפליקציה היחידה שאוריאל
+   פותח, והוא פותח אותה בטלפון. בדיקות פריסה ברוחב 1280 היו מאשרות מצב
+   שאיש אינו רואה. */
+const VIEWPORT = { width: 412, height: 915 };
 const newPage = async () => {
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await browser.newContext({ viewport: VIEWPORT })).newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -246,6 +250,111 @@ const todayLocal = () => {
     scriptSrc.includes('https://apis.google.com'), scriptSrc.trim());
   check('ה-CSP מתיר את ה-iframe של authDomain',
     (csp.split(';').find(d => d.trim().startsWith('frame-src')) || '').includes('firebaseapp.com'));
+
+  /* ─── הכספת המקומית ──────────────────────────────────────────────────
+     הטענה הנבדקת אינה "יש מסך נעילה" אלא שהבייטים ב-IndexedDB באמת אינם
+     קריאים. מסך שמסתיר נתונים טעונים נראה זהה למשתמש ואינו מגן על דבר,
+     ולכן הבדיקה קוראת את הרשומות הגולמיות ומחפשת בהן את התוכן. */
+  const VPASS = 'סיסמת-כספת-לבדיקה';
+  const rawDump = () => page.evaluate(async () => {
+    const [e, f, m] = await Promise.all([DB.rawEntries(), DB.rawFiles(), DB.rawMetaAll()]);
+    // ה-blob אינו עובר סריאליזציה ל-JSON, ולכן סוגו נרשם במפורש
+    return JSON.stringify({ e, f: f.map(x => ({ ...x, blob: x.blob ? 'BLOB' : null })), m });
+  });
+
+  const before = await rawDump();
+  check('לפני הפעלה — הנתונים גלויים ב-IndexedDB', before.includes('MyFundedFutures'),
+    'זו נקודת המוצא שהכספת אמורה לשנות');
+
+  await page.evaluate(p => vaultTurnOn && vaultEnable(p), VPASS);
+  const after = await rawDump();
+  check('הכספת הופעלה', await page.evaluate(() => vault.on && !!vault.key));
+  check('הרשומות אינן קריאות ב-IndexedDB', !after.includes('MyFundedFutures') && !after.includes('8800'),
+    'חיפוש התוכן ברשומות הגולמיות');
+  check('גם שמות הקבצים מוצפנים', !after.includes('.png') && !after.includes('image/png'),
+    '"אישור ניכוי מס.pdf" הוא מידע בפני עצמו');
+  check('המפתחות הראשיים נשארו גלויים', after.includes('"id"') && after.includes('"key"'),
+    'keyPath חייב להישאר קריא כדי ש-IndexedDB יתפקד');
+
+  check('הנתונים עדיין נקראים דרך DB', await page.evaluate(async () => {
+    const all = await DB.allEntries();
+    return JSON.stringify(all).includes('MyFundedFutures');
+  }));
+  check('קובץ מפוענח חזרה לגודלו', await page.evaluate(async () => {
+    const f = (await DB.allFiles())[0];
+    return !!(f && f.blob && f.blob.size > 0);
+  }));
+
+  // נעילה אמיתית מרוקנת את הזיכרון, לא רק מציגה שכבה מעל
+  await page.evaluate(() => vaultLockNow());
+  check('נעילה מוחקת את המפתח מהזיכרון', await page.evaluate(() => !vault.key));
+  check('נעילה מרוקנת את הרשומות מהזיכרון', await page.evaluate(() => data.entries.length === 0));
+  check('מסך הנעילה מוצג', await page.isVisible('#lockscreen'));
+
+  check('סיסמת כספת שגויה נדחית', await page.evaluate(async () => {
+    try { await vaultUnlock('לא-הסיסמה-הנכונה'); return false; } catch { return true; }
+  }));
+  // דרך המסך עצמו ולא בקריאה ישירה: זה המסלול שהמשתמש עובר בפועל
+  await page.fill('#lock-pass', VPASS);
+  await page.click('#lockscreen button:has-text("🔓 פתח")');
+  await page.waitForSelector('#lockscreen', { state: 'hidden', timeout: 10000 });
+  await page.waitForTimeout(600);
+  check('הסיסמה הנכונה פותחת ומחזירה את הנתונים',
+    await page.evaluate(() => JSON.stringify(data.entries).includes('MyFundedFutures')));
+
+  // ביטול הכספת חייב להחזיר את הנתונים שלמים — אחרת זו דלת חד-כיוונית
+  await page.evaluate(() => vaultDisable());
+  const back = await rawDump();
+  check('ביטול הכספת מחזיר את הנתונים גלויים', back.includes('MyFundedFutures'));
+  check('אין אובדן רשומות במעבר הלוך ושוב',
+    JSON.parse(back).e.length === JSON.parse(before).e.length,
+    `${JSON.parse(back).e.length} מול ${JSON.parse(before).e.length}`);
+  check('רשומת המנעול נמחקה', await page.evaluate(async () => !(await DB.rawMetaGet('__vault'))));
+
+  /* ─── פריסה ────────────────────────────────────────────────────────────
+     הסרגל התחתון קבוע במקומו. אם ריפוד הגוף קטן ממנו, הרשומה האחרונה
+     נחתכת — תקלה שאינה מפילה שום בדיקה לוגית ושנראית למשתמש בכל יום. */
+  await page.click('#tb-in');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+  const clip = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#list-in .entry')];
+    const f = document.querySelector('.footer').getBoundingClientRect();
+    const last = rows[rows.length - 1];
+    if (!last) return { ok: true };
+    const r = last.getBoundingClientRect();
+    return { ok: r.bottom <= f.top + 1, gap: Math.round(f.top - r.bottom) };
+  });
+  check('הסרגל התחתון אינו מכסה את הרשומה האחרונה', clip.ok, `מרווח ${clip.gap ?? '—'}px`);
+
+  const fits = await page.evaluate(() => {
+    // תג ההתראה ממוקם במכוון מחוץ לגבולות הכפתור, ולכן הוא מוסתר לרגע
+    // המדידה — אחרת הוא נספר כגלישת טקסט ומדווח על תקלה שאינה קיימת.
+    const bdgs = [...document.querySelectorAll('.tab .bdg')];
+    bdgs.forEach(b => b.style.display = 'none');
+    const tabs = [...document.querySelectorAll('.tab')];
+    const cut = tabs.filter(t => t.scrollWidth > t.clientWidth + 1).map(t => t.textContent.trim());
+    const row = document.querySelector('.tabs');
+    const fit = row.scrollWidth <= row.clientWidth + 1;
+    bdgs.forEach(b => b.style.display = '');
+    return { cut, row: fit };
+  });
+  check('שמות הטאבים אינם נחתכים', fits.cut.length === 0, fits.cut.join(', ') || 'כולם שלמים');
+  check('שורת הטאבים נכנסת ברוחב המסך', fits.row);
+
+  check('אין גלילה אופקית בדף', await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+
+  // רענון באמצע עבודה החזיר תמיד ל"הכנסות", ואיבד את ההקשר
+  await page.click('#tb-tax');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  check('רענון חוזר לאותו טאב', await page.locator('#tab-tax').isVisible(),
+    'היה מחזיר להכנסות');
+  check('הטאב הפעיל מסומן אחרי רענון', await page.evaluate(() =>
+    document.getElementById('tb-tax').classList.contains('active')));
+  await page.click('#tb-sum');
 
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
