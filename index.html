@@ -103,11 +103,19 @@
   .rc .tag.in { color: #4ade80; } .rc .tag.out { color: #ff6b6b; } .rc .tag.doc { color: #4dabf7; }
   .miss { background: #3a1616; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .miss button { background: #ff7a00; border: none; border-radius: 6px; color: #fff; font-size: 11px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
-  #pwmodal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; }
-  #pwmodal .pwbox { background: #1a2130; border-radius: 12px; padding: 16px; width: 100%; max-width: 360px; }
-  #pwmodal b { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
-  #pwmodal input { margin-top: 8px; }
-  #pw-err { color: #ff6b6b; font-size: 12px; min-height: 15px; margin-top: 6px; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; }
+  .modal .pwbox { background: #1a2130; border-radius: 12px; padding: 16px; width: 100%; max-width: 360px; max-height: 92vh; overflow-y: auto; }
+  .modal b { display: block; font-size: 15px; color: #fff; margin-bottom: 4px; }
+  .modal input { margin-top: 8px; }
+  #pw-err, #rec-err { color: #ff6b6b; font-size: 12px; min-height: 15px; margin-top: 6px; }
+  /* קוד השחזור מוצג פעם אחת בלבד, ולכן הוא חייב להיות קריא להעתקה ידנית:
+     גופן רחב-קבוע, ריווח בין תווים, ובחירה מלאה בהקשה אחת. */
+  #rec-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 17px;
+    letter-spacing: 1.5px; text-align: center; direction: ltr; background: #0f1420; color: #7ee787;
+    border: 1px solid #2c3a52; border-radius: 8px; padding: 14px 8px; margin: 10px 0; word-break: break-all;
+    user-select: all; -webkit-user-select: all; }
+  .warnbox { background: #2a1c14; border: 1px solid #7a4a1e; border-radius: 8px; padding: 10px;
+    font-size: 12px; color: #ffc48a; line-height: 1.55; margin-top: 8px; }
   .yearbar { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
   .yearbar label { margin: 0; font-size: 11.5px; color: #8b93a7; white-space: nowrap; }
   .yearbar select { padding: 6px 8px; font-size: 13px; background: #232b3d; border-color: #3a4560; }
@@ -341,7 +349,7 @@
   <div class="status" id="status"></div>
 </div>
 
-<div id="pwmodal" class="hidden">
+<div id="pwmodal" class="modal hidden">
   <div class="pwbox">
     <b id="pw-title"></b>
     <div id="pw-desc" class="disc" style="margin-top:0"></div>
@@ -351,6 +359,32 @@
     <button class="btn" onclick="pwSubmit()">אישור</button>
     <button class="btn sec" id="pw-plain" onclick="pwResolve(null)">בלי הצפנה</button>
     <button class="btn sec" onclick="pwResolve(false)">ביטול</button>
+  </div>
+</div>
+
+<!-- קוד השחזור מוצג כאן פעם אחת ויחידה. אין מסך "הצג לי שוב": אם האפליקציה
+     יכולה לשלוף אותו בשנית, היא מחזיקה אותו, וזה בדיוק מה שההצפנה מונעת. -->
+<div id="recmodal" class="modal hidden">
+  <div class="pwbox">
+    <b id="rec-title">🆘 קוד שחזור</b>
+    <div id="rec-desc" class="disc" style="margin-top:0"></div>
+    <div id="rec-code"></div>
+    <div id="rec-actions">
+      <button class="btn sec" onclick="recCopy()">📋 העתק</button>
+      <button class="btn sec" onclick="recDownload()">⬇️ הורד כקובץ</button>
+    </div>
+    <div class="warnbox" id="rec-warn">
+      הקוד הזה לא יוצג שוב, ואינו נשמר בשום שרת. בלעדיו ובלי הסיסמה — נתוני
+      הענן אינם ניתנים לשחזור. שמור אותו במקום שאינו המכשיר הזה.
+    </div>
+    <div id="rec-verify" class="hidden">
+      <div class="disc">הדבק את הקוד כדי לוודא ששמרת אותו:</div>
+      <input type="text" id="rec-input" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+             autocomplete="off" autocapitalize="characters" spellcheck="false" style="direction:ltr">
+    </div>
+    <div id="rec-err"></div>
+    <button class="btn" id="rec-ok" onclick="recNext()">שמרתי — המשך</button>
+    <button class="btn sec" id="rec-cancel" onclick="recResolve(false)">ביטול</button>
   </div>
 </div>
 
@@ -1446,6 +1480,72 @@ function pwSubmit() {
   if (_pwConfirm && a !== b) { err.textContent = 'הסיסמאות אינן זהות'; return; }
   pwResolve(a);
 }
+/* ===== חלון קוד השחזור =====
+   שני שלבים: הצגה, ואז הדבקה חוזרת. האימות אינו טקס — קוד שנסגר בלי
+   שנשמר גרוע מאין קוד כלל, כי הוא מקנה ביטחון שאינו קיים. */
+let _recResolve = null, _recCode = '', _recStage = 0;
+function showRecoveryCode(code, { title = '🆘 קוד השחזור שלך', desc } = {}) {
+  return new Promise(res => {
+    _recResolve = res; _recCode = code; _recStage = 0;
+    document.getElementById('rec-title').textContent = title;
+    document.getElementById('rec-desc').textContent = desc ||
+      'זהו המפתח החלופי שלך. אם תשכח את סיסמת ההצפנה, הקוד הזה — ורק הוא — יחזיר לך את הגישה לנתוני הענן.';
+    document.getElementById('rec-code').textContent = code;
+    document.getElementById('rec-code').classList.remove('hidden');
+    document.getElementById('rec-actions').classList.remove('hidden');
+    document.getElementById('rec-verify').classList.add('hidden');
+    document.getElementById('rec-input').value = '';
+    document.getElementById('rec-err').textContent = '';
+    document.getElementById('rec-ok').textContent = 'שמרתי — המשך';
+    document.getElementById('recmodal').classList.remove('hidden');
+  });
+}
+function recResolve(v) {
+  document.getElementById('recmodal').classList.add('hidden');
+  document.getElementById('rec-code').textContent = '';
+  document.getElementById('rec-input').value = '';
+  _recCode = '';
+  const r = _recResolve; _recResolve = null;
+  if (r) r(v);
+}
+function recNext() {
+  const err = document.getElementById('rec-err');
+  if (_recStage === 0) {
+    _recStage = 1;
+    document.getElementById('rec-code').classList.add('hidden');
+    document.getElementById('rec-actions').classList.add('hidden');
+    document.getElementById('rec-verify').classList.remove('hidden');
+    document.getElementById('rec-ok').textContent = 'אישור';
+    err.textContent = '';
+    setTimeout(() => document.getElementById('rec-input').focus(), 50);
+    return;
+  }
+  const typed = normRecoveryCode(document.getElementById('rec-input').value);
+  if (typed !== normRecoveryCode(_recCode)) { err.textContent = 'הקוד אינו תואם. בדוק שוב.'; return; }
+  recResolve(true);
+}
+function recCopy() {
+  const code = document.getElementById('rec-code').textContent;
+  navigator.clipboard?.writeText(code)
+    .then(() => setStatus('📋 הקוד הועתק'))
+    .catch(() => setStatus('⚠ ההעתקה נחסמה — סמן והעתק ידנית'));
+}
+function recDownload() {
+  const code = document.getElementById('rec-code').textContent;
+  const txt = `קוד שחזור — הנה"ח אוריאל פינטו\n\n${code}\n\n` +
+    `נוצר: ${new Date().toLocaleString('he-IL')}\n` +
+    `חשבון: ${(cloud.user && cloud.user.email) || ''}\n\n` +
+    `הקוד פותח את נתוני הענן המוצפנים אם סיסמת ההצפנה נשכחה.\n` +
+    `הוא אינו נשמר בשום שרת. מי שמחזיק בו יכול לפענח את הנתונים —\n` +
+    `שמור אותו כפי שהיית שומר מסמך בנקאי.\n`;
+  const url = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'קוד-שחזור-הנהח.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.getElementById('rec-input').addEventListener('keydown', e => { if (e.key === 'Enter') recNext(); });
+
 document.getElementById('pw-input2').addEventListener('keydown', e => { if (e.key === 'Enter') pwSubmit(); });
 document.getElementById('pw-input').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
@@ -1770,31 +1870,65 @@ async function stDel(name) {
     method: 'DELETE', headers: { Authorization: `Bearer ${await idToken()}` } }).catch(() => {});
 }
 
-/* ===== המפתח העטוף ===== */
+/* ===== המפתח העטוף =====
+   ה-DEK הוא מפתח אקראי יחיד, וכל "דלת" אליו היא עטיפה נוספת שלו. הסיסמה
+   היא דלת אחת, קוד השחזור הוא דלת שנייה — שתיהן פותחות את אותו מפתח, ואף
+   אחת מהן אינה מגיעה לשרת. זה מה שמאפשר שחזור בלי לוותר על ההצפנה: אין
+   כאן עותק של המפתח אצל הספק, יש מנעול נוסף שרק אוריאל מחזיק את מפתחו. */
 const keyPath = () => `users/${cloud.user.uid}/keys/dek`;
+const recoveryPath = () => `users/${cloud.user.uid}/keys/recovery`;
+
+/* אלפבית ללא תווים שמתבלבלים בקריאה מנייר: אין I, O, 0, 1. 24 תווים
+   מתוך 32 אפשרויות = 120 ביט, הרבה מעבר לכל ניחוש מעשי. */
+const REC_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function makeRecoveryCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const chars = [...bytes].map(b => REC_ALPHABET[b % REC_ALPHABET.length]);
+  return chars.join('').match(/.{4}/g).join('-');
+}
+/* מקבל את הקוד בכל צורה שהמשתמש הקליד — רווחים, מקפים, אותיות קטנות */
+const normRecoveryCode = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 async function deriveKek(pass, salt, iter) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
     base, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey']);
 }
-async function createDek(pass) {
-  const dek = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+/* עוטף DEK קיים בסוד נתון וכותב את התוצאה לנתיב. משותף לסיסמה ולקוד
+   השחזור — אותה עטיפה בדיוק, רק סוד אחר, ולכן אין כאן שני מסלולי הצפנה
+   שיכולים להיסחף זה מזה. */
+async function wrapDekTo(path, dek, secret) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const kek = await deriveKek(pass, salt, PBKDF2_ITER);
+  const kek = await deriveKek(secret, salt, PBKDF2_ITER);
   const wrapped = await crypto.subtle.wrapKey('raw', dek, kek, { name: 'AES-GCM', iv });
-  await fsPut(keyPath(), { salt: toB64(salt), iv: toB64(iv), wrapped: toB64(wrapped),
-                           iterations: PBKDF2_ITER, version: 1, updatedAt: Date.now() });
+  await fsPut(path, { salt: toB64(salt), iv: toB64(iv), wrapped: toB64(wrapped),
+                      iterations: PBKDF2_ITER, version: 1, updatedAt: Date.now() });
+}
+async function createDek(pass) {
+  const dek = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  await wrapDekTo(keyPath(), dek, pass);
   return dek;
 }
-/* זורק אם הסיסמה שגויה — תג האימות של GCM מוודא זאת, אין פענוח לזבל */
-async function openDek(rec, pass) {
-  const kek = await deriveKek(pass, fromB64(rec.salt), rec.iterations || PBKDF2_ITER);
+/* מייצר קוד שחזור ועוטף בו את אותו DEK. דורש מפתח ניתן-לייצוא, ולכן הוא
+   נקרא מיד אחרי היצירה, או אחרי פתיחה מפורשת עם extractable. */
+async function createRecovery(dek) {
+  const code = makeRecoveryCode();
+  await wrapDekTo(recoveryPath(), dek, normRecoveryCode(code));
+  return code;
+}
+/* זורק אם הסוד שגוי — תג האימות של GCM מוודא זאת, אין פענוח לזבל.
+   extractable נדרש רק כשעומדים לעטוף את המפתח מחדש (החלפת סיסמה, יצירת
+   קוד שחזור); בכל שאר המקרים המפתח נשאר כזה שלא ניתן לחלץ מהדפדפן. */
+async function unwrapDek(rec, secret, extractable = false) {
+  const kek = await deriveKek(secret, fromB64(rec.salt), rec.iterations || PBKDF2_ITER);
   return crypto.subtle.unwrapKey('raw', fromB64(rec.wrapped), kek,
     { name: 'AES-GCM', iv: fromB64(rec.iv) }, { name: 'AES-GCM', length: 256 },
-    false, ['encrypt', 'decrypt']);   // לא-ניתן-לייצוא: לא ניתן לחלץ אותו מהדפדפן
+    extractable, ['encrypt', 'decrypt']);
 }
+const openDek = (rec, pass, extractable = false) => unwrapDek(rec, pass, extractable);
+const openWithRecovery = (rec, code, extractable = false) =>
+  unwrapDek(rec, normRecoveryCode(code), extractable);
 
 /* ===== מנוע הסנכרון =====
    דוחף כל רשומה שהשתנתה מאז הסנכרון האחרון, מושך את מה שחדש בענן,
@@ -1961,6 +2095,59 @@ async function cloudSignIn() {
     setStatus('⚠ ' + cloud.err);
   }
 }
+/* ===== התחברות עם אימייל וסיסמה =====
+   זו סיסמת החשבון, ואין לבלבל בינה לבין סיסמת ההצפנה: את הראשונה Google
+   מנהלים ולכן ניתן לאפס אותה במייל, השנייה לעולם אינה עוזבת את המכשיר
+   ולכן היא זו שדורשת קוד שחזור. */
+const AUTH_ERRORS = {
+  'auth/invalid-email': 'כתובת האימייל אינה תקינה',
+  'auth/missing-password': 'חסרה סיסמה',
+  'auth/weak-password': 'הסיסמה חלשה מדי — לפחות 6 תווים',
+  'auth/email-already-in-use': 'כבר קיים חשבון עם האימייל הזה. השתמש ב"התחבר".',
+  'auth/invalid-credential': 'אימייל או סיסמה שגויים',
+  'auth/invalid-login-credentials': 'אימייל או סיסמה שגויים',
+  'auth/wrong-password': 'אימייל או סיסמה שגויים',
+  'auth/user-not-found': 'לא קיים חשבון עם האימייל הזה. השתמש ב"הרשמה".',
+  'auth/too-many-requests': 'יותר מדי ניסיונות. המתן כמה דקות.',
+  'auth/operation-not-allowed':
+    'התחברות עם אימייל אינה מופעלת בפרויקט. Firebase Console ← Authentication ← Sign-in method ← Email/Password ← Enable',
+};
+const authMsg = e => AUTH_ERRORS[e.code] || `${e.code || ''}${e.message ? ' — ' + e.message : ''}`.trim();
+
+function emailFields() {
+  const em = document.getElementById('cloud-email');
+  const pw = document.getElementById('cloud-pass');
+  return { email: (em ? em.value : '').trim(), pass: pw ? pw.value : '' };
+}
+function authFail(e) {
+  cloud.err = authMsg(e);
+  renderCloud();
+  setStatus('⚠ ' + cloud.err);
+}
+async function cloudEmailSignIn() {
+  const { email, pass } = emailFields();
+  if (!email || !pass) { cloud.err = 'מלא אימייל וסיסמה'; renderCloud(); return; }
+  cloud.err = null;
+  try { await _fbAuth.signInWithEmailAndPassword(email, pass); }
+  catch (e) { authFail(e); }
+}
+async function cloudEmailSignUp() {
+  const { email, pass } = emailFields();
+  if (!email || !pass) { cloud.err = 'מלא אימייל וסיסמה'; renderCloud(); return; }
+  cloud.err = null;
+  try { await _fbAuth.createUserWithEmailAndPassword(email, pass); }
+  catch (e) { authFail(e); }
+}
+async function cloudEmailReset() {
+  const { email } = emailFields();
+  if (!email) { cloud.err = 'הזן אימייל ואז לחץ שוב'; renderCloud(); return; }
+  cloud.err = null;
+  try {
+    await _fbAuth.sendPasswordResetEmail(email);
+    setStatus('📧 נשלח מייל לאיפוס סיסמת החשבון');
+  } catch (e) { authFail(e); }
+}
+
 async function cloudSignOut() {
   await DB.setMeta('cloudDek', null);
   await DB.setMeta('cloudLastPush', 0);
@@ -1978,17 +2165,22 @@ async function cloudUnlock() {
     if (!rec) {
       const pass = await askPassword({
         title: '🔑 הגדרת סיסמת הצפנה',
-        desc: 'זו סיסמה נפרדת מחשבון Google, והיא זו שמונעת מ-Google לקרוא את המסמכים שלך. היא לא נשמרת בשום שרת — אם תאבד אותה, נתוני הענן לא ניתנים לשחזור.',
+        desc: 'זו סיסמה נפרדת מחשבון המשתמש, והיא זו שמונעת מ-Google לקרוא את המסמכים שלך. היא לא נשמרת בשום שרת. מיד אחריה תקבל קוד שחזור, שיחזיר לך את הגישה אם תשכח אותה.',
         confirm: true,
       });
       if (!pass) return;
-      cloud.dek = await createDek(pass);
+      const dek = await createDek(pass);
+      // הקוד נוצר מיד, בזמן שה-DEK עוד ניתן לעטיפה. דחייה לשלב מאוחר יותר
+      // מחייבת להזין את הסיסמה שוב, וזה בדיוק מה שלא יעבוד למי ששכח אותה.
+      const code = await createRecovery(dek);
+      await showRecoveryCode(code, { title: '🆘 קוד השחזור שלך' });
+      cloud.dek = dek;
       await DB.setMeta('cloudDek', cloud.dek);
       setStatus('🔒 ההצפנה הוגדרה');
     } else {
       const pass = await askPassword({
         title: '🔑 סיסמת ההצפנה',
-        desc: 'הזן את סיסמת ההצפנה שהגדרת. היא נדרשת פעם אחת בכל מכשיר חדש.',
+        desc: 'הזן את סיסמת ההצפנה שהגדרת. היא נדרשת פעם אחת בכל מכשיר חדש. שכחת? סגור וגש ל"שחזור עם קוד".',
       });
       if (!pass) return;
       try { cloud.dek = await openDek(rec, pass); }
@@ -1998,6 +2190,66 @@ async function cloudUnlock() {
     }
     renderCloud();
     await syncNow();
+  } catch (e) { setStatus('⚠ ' + (e.message || e)); }
+}
+
+/* שחזור: הקוד פותח את אותו DEK, ומיד נקבעת סיסמה חדשה שעוטפת אותו מחדש.
+   הנתונים עצמם אינם מוצפנים מחדש — רק העטיפה מתחלפת, וזו כל הסיבה
+   שההיררכיה בנויה בשתי שכבות. */
+async function cloudRecover() {
+  if (!cloud.user) { setStatus('⚠ התחבר קודם'); return; }
+  try {
+    const recDoc = await fsGet(recoveryPath());
+    if (!recDoc) { setStatus('⚠ לא נוצר קוד שחזור לחשבון הזה'); return; }
+    const code = await askPassword({
+      title: '🆘 שחזור עם קוד',
+      desc: 'הזן את קוד השחזור שקיבלת כשהגדרת את ההצפנה. מקפים ואותיות קטנות לא משנים.',
+    });
+    if (!code) return;
+    let dek;
+    // extractable: המפתח עומד להיעטף מחדש תחת הסיסמה החדשה
+    try { dek = await openWithRecovery(recDoc, code, true); }
+    catch (e) { setStatus('⚠ קוד שחזור שגוי'); return; }
+    const pass = await askPassword({
+      title: '🔑 סיסמת הצפנה חדשה', confirm: true,
+      desc: 'הקוד אומת. קבע סיסמה חדשה — היא תחליף את הישנה בכל המכשירים.',
+    });
+    if (!pass) return;
+    await wrapDekTo(keyPath(), dek, pass);
+    // הקוד הישן שימש ונחשף בהקלדה, ולכן הוא מוחלף בקוד חדש ולא ממוחזר
+    const fresh = await createRecovery(dek);
+    await showRecoveryCode(fresh, {
+      title: '🆘 קוד שחזור חדש',
+      desc: 'הקוד הקודם כבר אינו תקף. זהו הקוד החדש — שמור אותו במקום הישן.',
+    });
+    cloud.dek = dek;
+    await DB.setMeta('cloudDek', dek);
+    renderCloud();
+    setStatus('🔓 הגישה שוחזרה והסיסמה הוחלפה');
+    await syncNow();
+  } catch (e) { setStatus('⚠ ' + (e.message || e)); }
+}
+
+/* יצירת קוד חדש למי שכבר הגדיר סיסמה, או שאיבד את הקוד שקיבל */
+async function cloudNewRecovery() {
+  if (!cloud.user) { setStatus('⚠ התחבר קודם'); return; }
+  try {
+    const rec = await fsGet(keyPath());
+    if (!rec) { setStatus('⚠ טרם הוגדרה סיסמת הצפנה'); return; }
+    const pass = await askPassword({
+      title: '🔑 אימות סיסמה',
+      desc: 'הזן את סיסמת ההצפנה כדי לייצר קוד שחזור חדש. הקוד הקודם, אם קיים, יפסיק לעבוד.',
+    });
+    if (!pass) return;
+    let dek;
+    try { dek = await openDek(rec, pass, true); }
+    catch (e) { setStatus('⚠ סיסמת הצפנה שגויה'); return; }
+    const code = await createRecovery(dek);
+    await showRecoveryCode(code, {
+      title: '🆘 קוד שחזור חדש',
+      desc: 'קוד זה מחליף כל קוד קודם. שמור אותו במקום שאינו המכשיר הזה.',
+    });
+    setStatus('🆘 קוד שחזור חדש נוצר');
   } catch (e) { setStatus('⚠ ' + (e.message || e)); }
 }
 
@@ -2014,14 +2266,24 @@ function renderCloud() {
   if (!cloud.user) {
     // שגיאת התחברות הוצגה עד כה רק כהודעת סטטוס חולפת, כלומר נעלמה בדיוק
     // כשהמשתמש ניסה לקרוא אותה. כאן היא נשארת על המסך עד הניסיון הבא.
+    // הערכים נשמרים ומוחזרים כדי שהודעת שגיאה לא תמחק את מה שהוקלד
+    const { email } = emailFields();
     el.innerHTML = `<div class="disc" style="margin-top:0">התחבר כדי לסנכרן בין מכשירים. המסמכים מוצפנים במכשיר לפני העלייה — Google מאחסן אותם אך לא יכול לקרוא אותם.
       ${cloud.err ? `<br><span style="color:#ff6b6b">⚠ ${escH(cloud.err)}</span>` : ''}</div>
-      <button class="btn" onclick="cloudSignIn()">🔵 התחבר עם Google</button>`;
+      <input type="email" id="cloud-email" placeholder="אימייל" autocomplete="username"
+             inputmode="email" spellcheck="false" value="${escH(email)}">
+      <input type="password" id="cloud-pass" placeholder="סיסמת חשבון" autocomplete="current-password">
+      <button class="btn" onclick="cloudEmailSignIn()">🔓 התחבר</button>
+      <button class="btn sec" onclick="cloudEmailSignUp()">➕ הרשמה (חשבון חדש)</button>
+      <button class="btn sec" onclick="cloudEmailReset()">שכחתי את סיסמת החשבון</button>
+      <div class="disc">או:</div>
+      <button class="btn sec" onclick="cloudSignIn()">🔵 התחבר עם Google</button>`;
     return;
   }
   if (!cloud.dek) {
     el.innerHTML = `<div class="disc" style="margin-top:0">מחובר כ-<b>${escH(cloud.user.email || '')}</b><br>נדרשת סיסמת ההצפנה כדי לפתוח את הסנכרון במכשיר הזה.</div>
       <button class="btn" onclick="cloudUnlock()">🔑 הזן סיסמת הצפנה</button>
+      <button class="btn sec" onclick="cloudRecover()">🆘 שכחתי — שחזור עם קוד</button>
       <button class="btn sec" onclick="cloudSignOut()">התנתק</button>`;
     return;
   }
@@ -2031,6 +2293,7 @@ function renderCloud() {
       ${cloud.err ? `<br><span style="color:#ff6b6b">⚠ ${escH(cloud.err)}</span>` : ''}
     </div>
     <button class="btn" onclick="syncNow()" ${cloud.syncing ? 'disabled' : ''}>${cloud.syncing ? '⏳ מסנכרן...' : '🔄 סנכרן עכשיו'}</button>
+    <button class="btn sec" onclick="cloudNewRecovery()">🆘 קוד שחזור חדש</button>
     <button class="btn sec" onclick="cloudSignOut()">התנתק</button>`;
 }
 
