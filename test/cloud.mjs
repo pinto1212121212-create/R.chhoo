@@ -39,8 +39,9 @@ const server = http.createServer((req, res) => {
     let html = fs.readFileSync(file, 'utf8');
     html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/,
       `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ${Object.values(EMU).join(' ')}; object-src 'none'">`);
-    html = html.replace(/const CLOUD = \{[\s\S]*?\};/,
-      `const CLOUD = { apiKey:'demo-key', authDomain:'${PROJECT}.firebaseapp.com', projectId:'${PROJECT}', bucket:'${BUCKET}', emulator:${JSON.stringify({ firestore: EMU.firestore, storage: EMU.storage })} };`);
+    // הזרקת קונפיגורציית האמולטור אחרי טעינת cloud-config.js
+    html = html.replace('<script src="cloud-config.js"></script>',
+      `<script>window.CLOUD_CONFIG={apiKey:'demo-key',authDomain:'${PROJECT}.firebaseapp.com',projectId:'${PROJECT}',bucket:'${BUCKET}',emulator:${JSON.stringify({ firestore: EMU.firestore, storage: EMU.storage })}};</script>`);
     res.writeHead(200, { 'Content-Type': 'text/html' });
     return res.end(html);
   }

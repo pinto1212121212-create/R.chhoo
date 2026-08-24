@@ -19,6 +19,8 @@
 <link rel="icon" href="icon.png" type="image/png">
 <!-- ספריות מאוחסנות מקומית: עובד אופליין, בלי תלות ב-CDN ובלי סיכון שרשרת אספקה.
      xlsx@0.18.5 ו-jszip@3.10.1 — קבצי ה-dist הרשמיים, מאומתים מול npm registry. -->
+<!-- הגדרות הענן בקובץ נפרד, כדי שאפשר יהיה לערוך אותן בלי לגעת באפליקציה -->
+<script src="cloud-config.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <style>
@@ -1651,12 +1653,10 @@ async function aiAttachDoc(docId) {
 
 /* מ-Firebase Console ← Project settings ← Your apps. הערכים אינם סוד —
    האבטחה נשענת על כללי האבטחה ועל ההצפנה, לא על הסתרתם. */
-const CLOUD = {
-  apiKey:     '',   // "AIza..."
-  authDomain: '',   // "hanhac-uriel.firebaseapp.com"
-  projectId:  '',   // "hanhac-uriel"
-  bucket:     '',   // "hanhac-uriel.firebasestorage.app"
-};
+/* ההגדרות מגיעות מ-cloud-config.js. ריק = הענן כבוי והאפליקציה מקומית. */
+const CLOUD = Object.assign(
+  { apiKey: '', authDomain: '', projectId: '', bucket: '' },
+  (typeof window !== 'undefined' && window.CLOUD_CONFIG) || {});
 const cloudOn = () => !!(CLOUD.apiKey && CLOUD.projectId && CLOUD.bucket);
 
 /* CLOUD.emulator מפנה את הקריאות לאמולטור המקומי. לפיתוח ולבדיקות בלבד —

@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { INDEX, readCloud, writeCloud, isConfigured } from '../scripts/config.mjs';
+import { INDEX, CONFIG_FILE, readCloud, writeCloud, isConfigured } from '../scripts/config.mjs';
 
 const pass = [], fail = [];
 const check = (name, cond, note = '') => {
@@ -17,7 +17,8 @@ const check = (name, cond, note = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${note ? `  (${note})` : ''}`);
 };
 
-const original = fs.readFileSync(INDEX, 'utf8');
+const original = fs.readFileSync(CONFIG_FILE, 'utf8');
+const originalIndex = fs.readFileSync(INDEX, 'utf8');
 try {
   // ─── קריאה ─────────────────────────────────────────────────────────────
   const before = readCloud();
@@ -39,12 +40,11 @@ try {
     JSON.stringify(after) === JSON.stringify(sample), JSON.stringify(after));
 
   // הקובץ חייב להישאר תקין תחבירית — זו הסכנה האמיתית בכתיבה אוטומטית
-  const js = fs.readFileSync(INDEX, 'utf8').match(/<script>\n([\s\S]*?)\n<\/script>/)[1];
-  fs.writeFileSync('/tmp/_cfgcheck.js', js);
   let syntaxOk = true;
-  try { execFileSync(process.execPath, ['--check', '/tmp/_cfgcheck.js'], { stdio: 'pipe' }); }
+  try { execFileSync(process.execPath, ['--check', CONFIG_FILE], { stdio: 'pipe' }); }
   catch { syntaxOk = false; }
-  check('index.html נשאר תקין אחרי הכתיבה', syntaxOk);
+  check('cloud-config.js נשאר תקין אחרי הכתיבה', syntaxOk);
+  check('index.html לא שונה', fs.readFileSync(INDEX, 'utf8') === originalIndex);
 
   // ─── verify מזהה נכון מצב לא מוגדר ─────────────────────────────────────
   writeCloud({ apiKey: '', authDomain: '', projectId: '', bucket: '' });
@@ -69,8 +69,8 @@ try {
   check('verify מדווח מה לתקן', /לתקן|נדחה|לא קיים|לא נוצר/.test(out2),
     out2.split('\n').filter(l => l.includes('❌')).length + ' כשלים דווחו');
 } finally {
-  fs.writeFileSync(INDEX, original);
-  console.log('\n↩️  index.html הוחזר למצבו המקורי');
+  fs.writeFileSync(CONFIG_FILE, original);
+  console.log('\n↩️  cloud-config.js הוחזר למצבו המקורי');
 }
 
 const restored = readCloud();
