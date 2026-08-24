@@ -449,7 +449,7 @@
       </div>
       <div class="row2">
         <div><label>או סכום $</label><input type="number" step="0.01" id="in-usd" inputmode="decimal" oninput="usdCalc('in')"></div>
-        <div><label>שער ₪/$</label><input type="number" step="0.001" id="in-rate" value="3.00" oninput="usdCalc('in')"></div>
+        <div><label>שער ₪/$</label><input type="number" step="0.001" id="in-rate" placeholder="לפי יום העסקה" oninput="usdCalc('in')"></div>
       </div>
       <label>מקור</label>
       <select id="in-cat">
@@ -459,6 +459,7 @@
         <option>לקוח — פיתוח ווב</option>
         <option>אחר</option>
       </select>
+      <div id="in-fxwarn" class="warnbox hidden">⚠️ הזן את <b>השער היציג</b> של בנק ישראל ליום העסקה. בלעדיו לא מחושב סכום — סכום שגוי בספרים גרוע מסכום חסר.<br><a href="https://www.boi.org.il/roles/markets/exchangerates/" target="_blank" rel="noopener" style="color:#ffb366">שערים יציגים — בנק ישראל</a></div>
       <label>הערה</label><input type="text" id="in-note" placeholder="למשל: משיכה, Riseworks">
       <div class="attach-zone" id="in-az" onclick="document.getElementById('in-file').click()">📎 צרף קבלה / אישור</div>
       <input type="file" id="in-file" accept="image/*" class="hidden" onchange="stageFile('in')">
@@ -478,7 +479,7 @@
       </div>
       <div class="row2">
         <div><label>או סכום $</label><input type="number" step="0.01" id="out-usd" inputmode="decimal" oninput="usdCalc('out')"></div>
-        <div><label>שער ₪/$</label><input type="number" step="0.001" id="out-rate" value="3.00" oninput="usdCalc('out')"></div>
+        <div><label>שער ₪/$</label><input type="number" step="0.001" id="out-rate" placeholder="לפי יום העסקה" oninput="usdCalc('out')"></div>
       </div>
       <label>קטגוריה</label>
       <select id="out-cat">
@@ -502,6 +503,7 @@
         <option>שיווק ופרסום</option>
         <option>אחר</option>
       </select>
+      <div id="out-fxwarn" class="warnbox hidden">⚠️ הזן את <b>השער היציג</b> של בנק ישראל ליום העסקה. בלעדיו לא מחושב סכום — סכום שגוי בספרים גרוע מסכום חסר.<br><a href="https://www.boi.org.il/roles/markets/exchangerates/" target="_blank" rel="noopener" style="color:#ffb366">שערים יציגים — בנק ישראל</a></div>
       <label>הערה</label><input type="text" id="out-note" placeholder="למשל: מנוי חודשי $125.6">
       <div class="attach-zone" id="out-az" onclick="document.getElementById('out-file').click()">📎 צרף קבלה</div>
       <input type="file" id="out-file" accept="image/*" class="hidden" onchange="stageFile('out')">
@@ -601,6 +603,7 @@
       <div class="prog" style="margin-top:8px"><i id="storageBar" style="width:0%;background:#4dabf7"></i></div>
       <button class="btn" style="background:#4dabf7;color:#0f1420" onclick="backupAll()">💾 גבה הכל לקובץ ZIP</button>
       <button class="btn sec" onclick="restoreAll()">♻️ שחזר מגיבוי</button>
+      <button class="btn sec" onclick="importEntries()">📥 ייבא רשומות (מוסיף, לא מוחק)</button>
       <div class="disc">הגיבוי כולל את כל הרשומות, הקבלות, הטפסים וההגדרות — קובץ אחד שאפשר לשמור בדרייב או לשלוח לעצמך במייל. השחזור מחזיר הכל בדיוק כפי שהיה, גם במכשיר אחר.</div>
     </div>
 
@@ -1248,12 +1251,33 @@ function buildYearFilter() {
   sel.value = uiYear;
 }
 
+/* המרת מט"ח.
+   קודם היה כאן `|| 3` — נפילה שקטה לשער 3 כששדה השער ריק. השער האמיתי
+   נע סביב 3.7, כלומר כל סכום דולרי נרשם בכ-20% פחות. בהוצאה זה גובה מס
+   עודף; בהכנסה זה דיווח חסר לרשות המסים, וזו הצורה המסוכנת.
+
+   שער שגוי גרוע משער חסר: חסר נראה, שגוי לא. לכן אין יותר ברירת מחדל,
+   והשדה נשאר ריק עד שהמשתמש מזין את השער היציג של יום העסקה. */
 function usdCalc(type) {
-  const usdEl = document.getElementById(type+'-usd');
-  const usd = parseFloat(usdEl.value);
-  const rate = parseFloat(document.getElementById(type+'-rate').value) || 3;
+  const usdEl  = document.getElementById(type+'-usd');
+  const rateEl = document.getElementById(type+'-rate');
   const noteEl = document.getElementById(type+'-note');
-  if (!usdEl.value) { if (noteEl.value.startsWith('$')) noteEl.value = ''; return; }
+  const warnEl = document.getElementById(type+'-fxwarn');
+  const usd  = parseFloat(usdEl.value);
+  const rate = parseFloat(rateEl.value);
+
+  if (!usdEl.value) {
+    if (noteEl.value.startsWith('$')) noteEl.value = '';
+    if (warnEl) warnEl.classList.add('hidden');
+    return;
+  }
+  if (!(rate > 0)) {
+    // בלי שער אין המרה. השדה השקלי נשאר ריק כדי שלא ייווצר סכום מומצא.
+    if (warnEl) warnEl.classList.remove('hidden');
+    document.getElementById(type+'-amt').value = '';
+    return;
+  }
+  if (warnEl) warnEl.classList.add('hidden');
   if (usd) {
     document.getElementById(type+'-amt').value = (usd*rate).toFixed(2);
     if (!noteEl.value || noteEl.value.startsWith('$')) noteEl.value = '$'+usd+' בשער '+rate;
@@ -1687,6 +1711,10 @@ async function addEntry(type) {
   if (!_db)     { setStatus('⚠ אין אחסון — הרשומה לא תישמר'); return; }
 
   const id = newId();
+  /* הסכום המקורי והשער נשמרים כשדות, ולא רק כטקסט בהערה. בביקורת צריך
+     להראות איך התקבל הסכום השקלי, והערה חופשית אינה ראיה שאפשר לשחזר. */
+  const usd  = parseFloat(document.getElementById(type+'-usd').value);
+  const rate = parseFloat(document.getElementById(type+'-rate').value);
   const entry = {
     id, type, date: d, amount: a,
     cat: document.getElementById(type+'-cat').value,
@@ -1694,6 +1722,7 @@ async function addEntry(type) {
     hasReceipt: !!staged[type],
     createdAt: Date.now(), updatedAt: Date.now(), deleted: false,
   };
+  if (usd > 0 && rate > 0) { entry.usd = usd; entry.rate = rate; entry.ccy = 'USD'; }
   try {
     if (staged[type]) {
       try { await DB.putFile(RK(id), staged[type], 'קבלה'); }
@@ -2212,6 +2241,92 @@ async function restoreAll() {
       alert(`השחזור הושלם:\n${payload.entries.length} רשומות\n${restored} קבצים`);
     } catch(e) { setStatus('⚠ השחזור נכשל — הקובץ אולי פגום'); }
   });
+}
+
+/* ===== ייבוא רשומות =====
+   שחזור מגיבוי מוחק את הקיים ומחליף אותו, ולכן אינו מתאים להוספת קבלה
+   בודדת. הייבוא כאן מוסיף בלבד: מזהים חדשים, ובלי לגעת במה שכבר שמור.
+
+   הקובץ הוא ZIP עם import.json ותיקיית files, או JSON בלבד כשאין קבלות.
+   מבנה רשומה: {type,date,amount,cat,note,receipt} — receipt הוא נתיב
+   לקובץ בתוך ה-ZIP. */
+const IMPORT_FORMAT = 1;
+
+/* חתימה לזיהוי כפילות. ייבוא של אותו קובץ פעמיים הוא טעות צפויה, והתוצאה
+   שלה — רשומות מוכפלות בדוח למס — גרועה בהרבה מהודעה שדילגנו. */
+const entrySig = e => [e.type, e.date, Number(e.amount).toFixed(2), e.cat || ''].join('|');
+
+/* מקבל קובץ ישירות, או פותח בורר כשלא ניתן. ההפרדה הזו היא מה שמאפשר
+   לבדוק את הייבוא בלי לחקות לחיצה על בורר קבצים שאינו במסמך. */
+async function importEntries(file) {
+  if (!_db) { setStatus('⚠ אין אחסון'); return; }
+  const run = async f => {
+    let payload = null, zip = null;
+    try {
+      const head = new Uint8Array(await f.slice(0, 2).arrayBuffer());
+      if (head[0] === 0x50 && head[1] === 0x4b) {          // "PK" = ZIP
+        zip = await JSZip.loadAsync(f);
+        const jf = zip.file('import.json');
+        if (!jf) { setStatus('⚠ הקובץ אינו קובץ ייבוא — חסר import.json'); return; }
+        payload = JSON.parse(await jf.async('string'));
+      } else {
+        payload = JSON.parse(await f.text());
+      }
+    } catch (e) { setStatus('⚠ לא ניתן לקרוא את הקובץ'); return; }
+
+    const rows = Array.isArray(payload) ? payload : (payload.entries || []);
+    if (!rows.length) { setStatus('⚠ אין רשומות בקובץ'); return; }
+
+    const bad = rows.filter(r => !r.date || !(Number(r.amount) > 0) || !['in', 'out'].includes(r.type));
+    if (bad.length) { setStatus(`⚠ ${bad.length} רשומות פגומות — לא יובא דבר`); return; }
+
+    const existing = new Set((await DB.allEntries()).filter(e => !e.deleted).map(entrySig));
+    const fresh = rows.filter(r => !existing.has(entrySig(r)));
+    const dup = rows.length - fresh.length;
+    if (!fresh.length) { setStatus(`⚠ כל ${rows.length} הרשומות כבר קיימות`); return; }
+
+    const preview = fresh.slice(0, 6)
+      .map(r => `• ${r.date} · ${r.cat || '—'} · ${fmt(r.amount)}${r.receipt ? ' 📎' : ''}`).join('\n');
+    if (!confirm(`לייבא ${fresh.length} רשומות?\n\n${preview}` +
+      (fresh.length > 6 ? `\n… ועוד ${fresh.length - 6}` : '') +
+      (dup ? `\n\n(${dup} דילגו — כבר קיימות)` : ''))) return;
+
+    setStatus('מייבא...');
+    let added = 0, files = 0;
+    try {
+      for (const r of fresh) {
+        const id = newId();
+        let hasReceipt = false;
+        if (r.receipt && zip) {
+          const zf = zip.file(r.receipt);
+          if (zf) {
+            const blob = await zf.async('blob');
+            await DB.putFile(RK(id), new Blob([blob], { type: r.mime || 'image/jpeg' }), 'קבלה');
+            hasReceipt = true; files++;
+          }
+        }
+        const entry = {
+          id, type: r.type, date: r.date, amount: Number(r.amount),
+          cat: r.cat || 'אחר', note: r.note || '', hasReceipt,
+          createdAt: Date.now(), updatedAt: Date.now(), deleted: false,
+        };
+        // מקור מט"ח נשמר כשדות, כדי שהסכום השקלי יהיה בר-שחזור בביקורת
+        if (Number(r.usd) > 0 && Number(r.rate) > 0) {
+          entry.usd = Number(r.usd); entry.rate = Number(r.rate); entry.ccy = r.ccy || 'USD';
+        }
+        await DB.putEntry(entry);
+        data.entries.push(entry);
+        added++;
+      }
+    } catch (e) { setStatus('⚠ הייבוא נכשל באמצע: ' + (e.message || e)); render(); return; }
+
+    queueSync();
+    render();
+    setStatus(`✓ יובאו ${added} רשומות ו-${files} קבלות`);
+    alert(`הייבוא הושלם:\n${added} רשומות\n${files} קבלות מצורפות` + (dup ? `\n${dup} דילגו (כפילות)` : ''));
+  };
+  if (file) return run(file);
+  pickFile('.hhimp,.zip,.json', run);
 }
 
 /* ===== 🤖 סריקה חכמה עם Claude =====

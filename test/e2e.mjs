@@ -391,6 +391,81 @@ const todayLocal = () => {
   check('מזהה הגרסה מוצג', await page.evaluate(() =>
     (document.getElementById('ver')?.textContent || '').includes('גרסה')));
 
+  /* ─── ייבוא רשומות ─────────────────────────────────────────────────────
+     ההבדל מ"שחזור" הוא כל העניין: שחזור מוחק ומחליף, ייבוא מוסיף. בדיקה
+     שרק סופרת רשומות אחרי ייבוא לא הייתה מבחינה בין השניים, ולכן נספר
+     כאן מה היה לפני ומוודא שהוא שרד. */
+  await page.click('#tb-sum');
+  await page.waitForTimeout(300);
+  const beforeImp = await page.evaluate(() => data.entries.length);
+
+  // ה-ZIP נבנה בדפדפן, שבו JSZip כבר טעון — במקום להוסיף תלות ל-Node
+  const impRes = await page.evaluate(async pngB64 => {
+    const bytes = Uint8Array.from(atob(pngB64), c => c.charCodeAt(0));
+    const z = new JSZip();
+    z.file('import.json', JSON.stringify({ format: 1, entries: [
+      { type: 'out', date: '2024-03-14', amount: 376.8, cat: 'פרופ-פירם — MFFU', note: 'מבחן ייבוא', receipt: 'files/0.png' },
+      { type: 'in',  date: '2024-05-02', amount: 5200,  cat: 'משיכה — Topstep',  note: 'בלי קבלה' },
+    ]}));
+    z.file('files/0.png', bytes);
+    const blob = await z.generateAsync({ type: 'blob' });
+    window.__impFile = new File([blob], 'x.hhimp', { type: 'application/zip' });
+    await importEntries(window.__impFile);
+    return data.entries.length;
+  }, png.toString('base64'));
+
+  check('הייבוא הוסיף רשומות', impRes === beforeImp + 2, `${beforeImp} → ${impRes}`);
+  check('הרשומות הקיימות שרדו', impRes > beforeImp, 'ייבוא מוסיף, לא מחליף');
+  check('הקבלה מהייבוא צורפה', await page.evaluate(async () => {
+    const e = data.entries.find(x => x.note === 'מבחן ייבוא');
+    if (!e || !e.hasReceipt) return false;
+    const r = await DB.getFile('rcpt-' + e.id);
+    return !!(r && r.blob && r.blob.size > 0);
+  }));
+  check('רשומה ללא קבלה סומנה נכון', await page.evaluate(() =>
+    data.entries.find(x => x.note === 'בלי קבלה')?.hasReceipt === false));
+  check('שנת הרשומה נלקחה מהקובץ', await page.evaluate(() =>
+    data.entries.find(x => x.note === 'מבחן ייבוא')?.date === '2024-03-14'), 'קבלה מ-2024 נכנסת ל-2024');
+
+  // ייבוא חוזר של אותו קובץ הוא טעות צפויה, והכפלת רשומות בדוח מס גרועה
+  const again = await page.evaluate(async () => {
+    await importEntries(window.__impFile);
+    return data.entries.length;
+  });
+  check('ייבוא חוזר אינו מכפיל', again === impRes, 'זוהו ככפילות');
+
+  /* ─── המרת מט"ח ────────────────────────────────────────────────────────
+     ברירת המחדל הייתה 3.00 בעוד השער האמיתי סביב 3.7, כלומר כל סכום
+     דולרי נרשם בכ-20% פחות. בהכנסה זה דיווח חסר לרשות המסים. הבדיקה
+     מוודאת שאין יותר מספר מומצא, ושבלי שער לא נוצר סכום כלל. */
+  await page.click('#tb-out');
+  await page.waitForTimeout(250);
+  check('שדה השער ריק — אין ברירת מחדל מומצאת',
+    (await page.inputValue('#out-rate')) === '', `נמצא "${await page.inputValue('#out-rate')}"`);
+
+  await page.fill('#out-usd', '37.40');
+  await page.waitForTimeout(250);
+  check('דולרים בלי שער לא מייצרים סכום', (await page.inputValue('#out-amt')) === '',
+    'קודם היה מכפיל ב-3 בשקט');
+  check('מוצגת אזהרה על השער היציג', await page.locator('#out-fxwarn').isVisible());
+
+  await page.fill('#out-rate', '3.72');
+  await page.waitForTimeout(250);
+  check('עם שער — הסכום מחושב נכון', (await page.inputValue('#out-amt')) === '139.13',
+    `37.40 × 3.72 = ${await page.inputValue('#out-amt')}`);
+  check('האזהרה נעלמת אחרי הזנת שער', !(await page.locator('#out-fxwarn').isVisible()));
+
+  await page.fill('#out-date', '2024-04-09');
+  await page.selectOption('#out-cat', 'פרופ-פירם — Apex (היסטורי)');
+  await page.click('#tab-out button[type="submit"]');
+  await page.waitForTimeout(500);
+  const fx = await page.evaluate(() => data.entries.find(e => e.date === '2024-04-09'));
+  check('השער והסכום המקורי נשמרו על הרשומה',
+    fx && fx.usd === 37.4 && fx.rate === 3.72 && fx.ccy === 'USD',
+    fx ? `${fx.usd} × ${fx.rate}` : 'לא נמצאה');
+  check('הסכום השקלי בר-שחזור מהשדות',
+    fx && Math.abs(fx.usd * fx.rate - fx.amount) < 0.01, 'ראיה לביקורת, לא הערה חופשית');
+
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
 
