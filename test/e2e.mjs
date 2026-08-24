@@ -148,6 +148,13 @@ const todayLocal = () => {
     return { net: t.net, deduct: t.blDeduct, taxable: t.taxable };
   });
   check('ניכוי 52% מדמי ב"ל מוחל', tax.deduct > 0 && tax.taxable < tax.net);
+  // כרטיס ה-KPI חייב להסכים עם הפאנל. הוא הפסיק להתעדכן בשכתוב ולא נתפס
+  // בשום בדיקה, כי כל הבדיקות קראו את המנוע ולא את מה שהמשתמש רואה.
+  await page.selectOption('#yearFilter', '2026');   // שנה עם נתונים — אחרת 0===0 עובר בקלות
+  await page.waitForTimeout(300);
+  const kpiTax = (await page.textContent('#kTax')).replace(/[^\d]/g, '');
+  const panelTax = await page.evaluate(() => Math.round(taxEstimate(taxYear()).total));
+  check('כרטיס "אומדן מס" מסכים עם הפאנל', kpiTax === String(panelTax), `כרטיס ${kpiTax} · מנוע ${panelTax}`);
   check('ב"ל נעצר בתקרה', await page.evaluate(() => {
     const c = cfgFor(2026);
     return Math.abs(calcBL(c.bl.maxCap, c) - calcBL(c.bl.maxCap * 5, c)) < 0.01;

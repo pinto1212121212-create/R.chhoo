@@ -698,6 +698,7 @@ function renderTax() {
     <div class="taxrow"><span><b>סה"כ אומדן</b></span><b class="big">${fmt(t.total)}</b></div>
     <div class="taxrow"><span>מדרגה שולית נוכחית</span><b>${(m.rate*100).toFixed(0)}%</b></div>
   `;
+  document.getElementById('kTax').textContent = fmt(t.total);
 
   const ynC = yearNet(y);
   if (ynC.i > 0) {
