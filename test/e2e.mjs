@@ -391,6 +391,49 @@ const todayLocal = () => {
   check('מזהה הגרסה מוצג', await page.evaluate(() =>
     (document.getElementById('ver')?.textContent || '').includes('גרסה')));
 
+  /* ─── ייבוא רשומות ─────────────────────────────────────────────────────
+     ההבדל מ"שחזור" הוא כל העניין: שחזור מוחק ומחליף, ייבוא מוסיף. בדיקה
+     שרק סופרת רשומות אחרי ייבוא לא הייתה מבחינה בין השניים, ולכן נספר
+     כאן מה היה לפני ומוודא שהוא שרד. */
+  await page.click('#tb-sum');
+  await page.waitForTimeout(300);
+  const beforeImp = await page.evaluate(() => data.entries.length);
+
+  // ה-ZIP נבנה בדפדפן, שבו JSZip כבר טעון — במקום להוסיף תלות ל-Node
+  const impRes = await page.evaluate(async pngB64 => {
+    const bytes = Uint8Array.from(atob(pngB64), c => c.charCodeAt(0));
+    const z = new JSZip();
+    z.file('import.json', JSON.stringify({ format: 1, entries: [
+      { type: 'out', date: '2024-03-14', amount: 376.8, cat: 'פרופ-פירם — MFFU', note: 'מבחן ייבוא', receipt: 'files/0.png' },
+      { type: 'in',  date: '2024-05-02', amount: 5200,  cat: 'משיכה — Topstep',  note: 'בלי קבלה' },
+    ]}));
+    z.file('files/0.png', bytes);
+    const blob = await z.generateAsync({ type: 'blob' });
+    window.__impFile = new File([blob], 'x.hhimp', { type: 'application/zip' });
+    await importEntries(window.__impFile);
+    return data.entries.length;
+  }, png.toString('base64'));
+
+  check('הייבוא הוסיף רשומות', impRes === beforeImp + 2, `${beforeImp} → ${impRes}`);
+  check('הרשומות הקיימות שרדו', impRes > beforeImp, 'ייבוא מוסיף, לא מחליף');
+  check('הקבלה מהייבוא צורפה', await page.evaluate(async () => {
+    const e = data.entries.find(x => x.note === 'מבחן ייבוא');
+    if (!e || !e.hasReceipt) return false;
+    const r = await DB.getFile('rcpt-' + e.id);
+    return !!(r && r.blob && r.blob.size > 0);
+  }));
+  check('רשומה ללא קבלה סומנה נכון', await page.evaluate(() =>
+    data.entries.find(x => x.note === 'בלי קבלה')?.hasReceipt === false));
+  check('שנת הרשומה נלקחה מהקובץ', await page.evaluate(() =>
+    data.entries.find(x => x.note === 'מבחן ייבוא')?.date === '2024-03-14'), 'קבלה מ-2024 נכנסת ל-2024');
+
+  // ייבוא חוזר של אותו קובץ הוא טעות צפויה, והכפלת רשומות בדוח מס גרועה
+  const again = await page.evaluate(async () => {
+    await importEntries(window.__impFile);
+    return data.entries.length;
+  });
+  check('ייבוא חוזר אינו מכפיל', again === impRes, 'זוהו ככפילות');
+
   check('אין שגיאות JS בכל התרחיש', errors.length === 0, errors[0] || '');
 }
 
