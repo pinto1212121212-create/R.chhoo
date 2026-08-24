@@ -47,8 +47,11 @@ const newPage = async () => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  page.on('dialog', d => d.accept());
-  return { page, errors };
+  // מטפל יחיד בדיאלוגים. Playwright לא מרשה שני מטפלים לאותו דיאלוג,
+  // ולכן הבדיקות משנות את ההתנהגות דרך dlg במקום להוסיף מאזין.
+  const dlg = { action: 'accept', asked: false };
+  page.on('dialog', d => { dlg.asked = true; dlg.action === 'dismiss' ? d.dismiss() : d.accept(); });
+  return { page, errors, dlg };
 };
 
 const todayLocal = () => {
@@ -58,7 +61,7 @@ const todayLocal = () => {
 
 // ─── תרחיש 1: הזנה, שמירה והישרדות רענון ──────────────────────────────────
 {
-  const { page, errors } = await newPage();
+  const { page, errors, dlg } = await newPage();
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
 
@@ -141,6 +144,71 @@ const todayLocal = () => {
   check('גיבוי מוצפן ירד', encFile.suggestedFilename().endsWith('.hhbak'));
   check('הקובץ המוצפן נושא חתימת HHBAK1', encBytes.subarray(0, 6).toString() === 'HHBAK1');
   check('הקובץ המוצפן אינו ZIP קריא', encBytes.subarray(6, 10).toString() !== 'PK');
+
+  // ─── ארכיון הקבצים ───────────────────────────────────────────────────
+  await page.selectOption('#yearFilter', '2026');   // הקבלה נוצרה היום
+  await page.waitForTimeout(300);
+  await page.click('#tb-arch');
+  await page.waitForTimeout(600);
+  check('טאב הארכיון נפתח', await page.locator('#tab-arch').isVisible());
+  check('הקבלה מופיעה בארכיון', await page.locator('#arch-grid .rc').count() === 1,
+    `${await page.locator('#arch-grid .rc').count()} כרטיסים`);
+
+  // התמונה נטענת עצלנית — הכרטיס מתחיל כאייקון ומקבל תצוגה מקדימה
+  await page.waitForFunction(() => {
+    const t = document.querySelector('#arch-grid .rc .thumb');
+    return t && /blob:/.test(t.style.backgroundImage);
+  }, { timeout: 8000 }).catch(() => {});
+  const thumbed = await page.evaluate(() =>
+    /blob:/.test(document.querySelector('#arch-grid .rc .thumb')?.style.backgroundImage || ''));
+  check('תצוגה מקדימה נטענה', thumbed);
+
+  check('שורות ללא אסמכתא מדווחות', (await page.textContent('#arch-stats')).includes('ללא אסמכתא'));
+
+  // חיפוש
+  await page.fill('#arch-q', 'לאלאלא-לא-קיים');
+  await page.waitForTimeout(400);
+  check('חיפוש ללא תוצאות', (await page.textContent('#arch-grid')).includes('לא נמצאו'));
+  await page.fill('#arch-q', '');
+  await page.waitForTimeout(400);
+  check('ניקוי החיפוש מחזיר תוצאות', await page.locator('#arch-grid .rc').count() === 1);
+
+  // סינון
+  await page.click('.fchip:has-text("הוצאות")');
+  await page.waitForTimeout(400);
+  check('סינון להוצאות מסתיר קבלת הכנסה', await page.locator('#arch-grid .rc').count() === 0);
+  await page.click('.fchip:has-text("הכל")');
+  await page.waitForTimeout(400);
+
+  // צופה עם זום
+  await page.click('#arch-grid .rc');
+  await page.waitForTimeout(700);
+  check('הצופה נפתח מהארכיון', await page.locator('#viewer').isVisible());
+  check('כותרת הצופה מציגה פרטים', (await page.textContent('#viewer-title')).length > 3);
+  check('הזום מתחיל ב-100%', (await page.textContent('#viewer-zoomlbl')) === '100%');
+  await page.click('.vbtn:has-text("➕")');
+  await page.click('.vbtn:has-text("➕")');
+  await page.waitForTimeout(200);
+  check('כפתור הזום מגדיל', (await page.textContent('#viewer-zoomlbl')) === '200%');
+  const scaled = await page.evaluate(() => document.getElementById('viewer-img').style.transform);
+  check('הטרנספורם הוחל על התמונה', /scale\(2\)/.test(scaled), scaled);
+  await page.click('#viewer-zoomlbl');
+  await page.waitForTimeout(200);
+  check('לחיצה על האחוזים מאפסת', (await page.textContent('#viewer-zoomlbl')) === '100%');
+  // מחיקת קבלה היא בלתי הפיכה — חייבת לדרוש אישור
+  dlg.action = 'dismiss'; dlg.asked = false;
+  await page.click('#viewer-del');
+  await page.waitForTimeout(500);
+  dlg.action = 'accept';
+  check('מחיקת קבלה דורשת אישור', dlg.asked);
+  check('ביטול האישור לא מחק', await page.evaluate(async () => {
+    const e = data.entries.find(x => x.amount === 1200);
+    return !!(e && e.hasReceipt && await DB.getFile('rcpt-' + e.id));
+  }));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  check('Escape סוגר את הצופה', !(await page.locator('#viewer').isVisible()));
 
   // מנוע המס
   const tax = await page.evaluate(() => {
