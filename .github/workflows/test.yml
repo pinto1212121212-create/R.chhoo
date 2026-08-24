@@ -1,0 +1,78 @@
+name: בדיקות
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  app:
+    name: אפליקציה וסקריפטים
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # הדפדפן נדרש לבדיקות ה-e2e. --with-deps מתקין גם את ספריות המערכת.
+      - run: npx playwright install --with-deps chromium
+
+      - name: בדיקות דפדפן וסקריפטים
+        run: npm test
+
+  cloud:
+    name: כללי אבטחה וסנכרון
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # אמולטור Firestore רץ על JVM
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: הפעלת אמולטור Firebase
+        working-directory: firebase
+        run: |
+          # setsid + nohup כדי שהתהליך ישרוד גם אחרי שה-shell של השלב מסתיים
+          setsid nohup npx firebase-tools emulators:start \
+            --project demo-hanhac \
+            --only auth,firestore,storage \
+            < /dev/null > "${RUNNER_TEMP}/emulator.log" 2>&1 &
+          disown || true
+          for i in $(seq 1 90); do
+            if grep -q "All emulators ready" "${RUNNER_TEMP}/emulator.log" 2>/dev/null; then
+              echo "האמולטור מוכן אחרי ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::האמולטור לא עלה בזמן"
+          cat "${RUNNER_TEMP}/emulator.log"
+          exit 1
+
+      - name: כללי אבטחה
+        run: node test/rules.mjs
+
+      - name: סנכרון ענן
+        run: node test/cloud.mjs
+
+      - name: לוג האמולטור בכישלון
+        if: failure()
+        run: cat "${RUNNER_TEMP}/emulator.log"
