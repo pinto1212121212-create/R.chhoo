@@ -150,6 +150,60 @@ check('סיסמת הצפנה שגויה נכשלת', await C.page.evaluate(async
   try { await openDek(rec, 'סיסמה-לא-נכונה'); return false; } catch { return true; }
 }));
 
+/* ─── קוד שחזור ───────────────────────────────────────────────────────────
+   הבדיקה המהותית אינה שהקוד "נוצר", אלא שהוא באמת פותח את אותם נתונים.
+   קוד שנראה תקין ואינו מפענח גרוע מאין קוד כלל: הוא מבטיח ביטחון שאינו
+   קיים, והכשל מתגלה רק ביום שבו הסיסמה כבר נשכחה. */
+const recCode = await A.page.evaluate(async () => {
+  const dek = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  await wrapDekTo(keyPath(), dek, 'סיסמה-זמנית-לבדיקה');
+  return createRecovery(dek);
+});
+check('הקוד בפורמט קריא לבני אדם', /^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){5}$/.test(recCode), recCode);
+check('אין תווים מתבלבלים בקוד (I O 0 1)', !/[IO01]/.test(recCode));
+
+check('הקוד פותח את אותו מפתח כמו הסיסמה', await C.page.evaluate(async ({ code, pass }) => {
+  const byPass = await openDek(await fsGet(`users/${cloud.user.uid}/keys/dek`), pass);
+  const byCode = await openWithRecovery(await fsGet(`users/${cloud.user.uid}/keys/recovery`), code);
+  // שוויון מפתחות נבדק דרך התנהגותם: מה שאחד מצפין, השני חייב לפענח
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, byPass, new TextEncoder().encode('טופס 106'));
+  const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, byCode, ct);
+  return new TextDecoder().decode(out) === 'טופס 106';
+}, { code: recCode, pass: 'סיסמה-זמנית-לבדיקה' }));
+
+check('הקוד סובל מקפים, רווחים ואותיות קטנות', await C.page.evaluate(async code => {
+  const messy = ' ' + code.toLowerCase().replace(/-/g, ' ') + ' ';
+  try { await openWithRecovery(await fsGet(`users/${cloud.user.uid}/keys/recovery`), messy); return true; }
+  catch { return false; }
+}, recCode));
+
+check('קוד שחזור שגוי נכשל', await C.page.evaluate(async () => {
+  const rec = await fsGet(`users/${cloud.user.uid}/keys/recovery`);
+  try { await openWithRecovery(rec, 'AAAA-BBBB-CCCC-DDDD-EEEE-FFFF'); return false; } catch { return true; }
+}));
+
+check('מסמך השחזור בענן אינו מכיל את הקוד', await C.page.evaluate(async code => {
+  const raw = JSON.stringify(await fsGet(`users/${cloud.user.uid}/keys/recovery`));
+  return !raw.includes(code) && !raw.includes(code.replace(/-/g, ''));
+}, recCode), 'רק salt, iv ו-wrapped');
+
+// החלפת סיסמה עוטפת מחדש את אותו מפתח — הנתונים אינם מוצפנים מחדש
+check('סיסמה חדשה נקבעת אחרי שחזור', await C.page.evaluate(async code => {
+  const dek = await openWithRecovery(await fsGet(`users/${cloud.user.uid}/keys/recovery`), code, true);
+  await wrapDekTo(keyPath(), dek, 'סיסמה-חדשה-לגמרי');
+  await openDek(await fsGet(`users/${cloud.user.uid}/keys/dek`), 'סיסמה-חדשה-לגמרי');
+  return true;
+}, recCode));
+
+check('הסיסמה הישנה כבר לא עובדת', await C.page.evaluate(async () => {
+  const rec = await fsGet(`users/${cloud.user.uid}/keys/dek`);
+  try { await openDek(rec, 'סיסמה-זמנית-לבדיקה'); return false; } catch { return true; }
+}));
+
+// החזרת מפתח התרחיש המקורי, כדי שהבדיקות שאחרי כן ימשיכו מאותה נקודה
+await A.page.evaluate(async p => { await wrapDekTo(keyPath(), cloud.dek, p); }, PASS);
+
 // ─── מחיקה מתפשטת כ-tombstone ────────────────────────────────────────────
 const delId = (await entries(A.page))[0].id;
 await A.page.evaluate(async id => {
