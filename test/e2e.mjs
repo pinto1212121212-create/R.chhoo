@@ -53,8 +53,14 @@ const newPage = async () => {
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   // מטפל יחיד בדיאלוגים. Playwright לא מרשה שני מטפלים לאותו דיאלוג,
   // ולכן הבדיקות משנות את ההתנהגות דרך dlg במקום להוסיף מאזין.
-  const dlg = { action: 'accept', asked: false };
-  page.on('dialog', d => { dlg.asked = true; dlg.action === 'dismiss' ? d.dismiss() : d.accept(); });
+  const dlg = { action: 'accept', asked: false, answers: null };
+  page.on('dialog', d => {
+    dlg.asked = true;
+    if (dlg.action === 'dismiss') return d.dismiss();
+    // prompt עם תשובות מוכנות מראש — נחוץ לזרימות שמבקשות הקלדה (מחיקת שנה)
+    if (d.type() === 'prompt' && Array.isArray(dlg.answers)) return d.accept(String(dlg.answers.shift() ?? ''));
+    d.accept();
+  });
   return { page, errors, dlg };
 };
 
@@ -570,6 +576,66 @@ const todayLocal = () => {
   await page.waitForTimeout(800);
   check('המצב המשוחזר שורד רענון', await page.evaluate(() => data.entries.length) === 3);
   check('אין שגיאות JS בשחזור', errors.length === 0, errors[0] || '');
+}
+
+// ─── תרחיש: מחיקת שנה שלמה (אזור מסוכן) ──────────────────────────────────
+{
+  const { page, errors, dlg } = await newPage();
+  await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+
+  // שלוש רשומות בשתי שנים, אחת עם קבלה — דרך מנגנון הייבוא האמיתי
+  await page.evaluate(async () => {
+    const z = new JSZip();
+    z.file('import.json', JSON.stringify({ format: 1, entries: [
+      { type: 'out', date: '2024-03-01', amount: 100, cat: 'בדיקה', note: 'רשומת 2024 א', receipt: 'files/r.jpg', mime: 'image/jpeg' },
+      { type: 'out', date: '2024-06-01', amount: 200, cat: 'בדיקה', note: 'רשומת 2024 ב' },
+      { type: 'out', date: '2025-01-15', amount: 300, cat: 'בדיקה', note: 'רשומת 2025' },
+    ]}));
+    z.file('files/r.jpg', new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9]));
+    const blob = await z.generateAsync({ type: 'blob' });
+    await importEntries(new File([blob], 'seed.hhimp', { type: 'application/zip' }));
+  });
+  check('נשתלו 3 רשומות בשתי שנים', await page.evaluate(() => data.entries.length) === 3);
+
+  await page.click('.tabs button:has-text("סיכום")');
+  const zone = page.locator('#danger-zone');
+  check('אזור המחיקה קיים ומקופל כברירת מחדל', await zone.count() === 1 && !(await zone.evaluate(el => el.open)));
+  check('כפתור המחיקה לא גלוי כשהאזור מקופל', !(await page.locator('#danger-zone button').isVisible()));
+
+  // שנה שגויה — לא נמחק דבר
+  dlg.answers = ['1999'];
+  await zone.evaluate(el => { el.open = true; });
+  await page.click('#danger-zone button');
+  await page.waitForTimeout(400);
+  check('שנה שגויה לא מוחקת דבר', await page.evaluate(() => data.entries.length) === 3);
+
+  // אישור חוזר לא תואם — לא נמחק דבר
+  dlg.answers = ['2024', '2023'];
+  await page.click('#danger-zone button');
+  await page.waitForTimeout(400);
+  check('אישור חוזר שגוי לא מוחק דבר', await page.evaluate(() => data.entries.length) === 3);
+
+  // הזרימה המלאה: 2024 נמחקת, 2025 נשארת, הקבלה נמחקת ונשארים tombstones
+  dlg.answers = ['2024', '2024'];
+  await page.click('#danger-zone button');
+  await page.waitForTimeout(700);
+  const after = await page.evaluate(async () => {
+    const all = await DB.allEntries();
+    const gone = all.filter(e => e.deleted);
+    const live = data.entries;
+    const rcpts = await Promise.all(gone.map(e => DB.getFile('rcpt-' + e.id).catch(() => null)));
+    return { live: live.length, liveYear: live[0] && live[0].date.slice(0, 4),
+             tombs: gone.length, files: rcpts.filter(Boolean).length };
+  });
+  check('נשארה רק רשומת 2025', after.live === 1 && after.liveYear === '2025', JSON.stringify(after));
+  check('המחיקות נשמרו כ-tombstones לסנכרון', after.tombs === 2, `${after.tombs}`);
+  check('קובצי הקבלות של השנה נמחקו', after.files === 0);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  check('המחיקה שורדת רענון', await page.evaluate(() => data.entries.length) === 1);
+  check('אין שגיאות JS במחיקת שנה', errors.length === 0, errors[0] || '');
 }
 
 console.log('\n' + '─'.repeat(46));

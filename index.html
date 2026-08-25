@@ -609,6 +609,14 @@
       <button class="btn sec" onclick="restoreAll()">♻️ שחזר מגיבוי</button>
       <button class="btn sec" onclick="importEntries()">📥 ייבא רשומות (מוסיף, לא מוחק)</button>
       <div class="disc">הגיבוי כולל את כל הרשומות, הקבלות, הטפסים וההגדרות — קובץ אחד שאפשר לשמור בדרייב או לשלוח לעצמך במייל. השחזור מחזיר הכל בדיוק כפי שהיה, גם במכשיר אחר.</div>
+      <details id="danger-zone" style="margin-top:10px">
+        <summary style="cursor:pointer;font-size:12px;color:#8b93a7">אפשרויות מתקדמות…</summary>
+        <div style="border:1px solid #5c2430;border-radius:12px;background:rgba(120,30,45,.12);padding:12px;margin-top:8px">
+          <b style="color:#ff8c9a">🧨 מחיקת שנה שלמה</b>
+          <div class="disc">מוחק לצמיתות את כל הרשומות והקבלות של שנת מס אחת — מהמכשיר הזה ומכל המכשירים המסונכרנים. לפני מחיקה מומלץ לגבות.</div>
+          <button class="btn sec" style="border-color:#7a2a3a;color:#ff8c9a" onclick="wipeYear()">מחק את כל הרשומות של שנה…</button>
+        </div>
+      </details>
     </div>
 
     <h3>🔒 נעילת האפליקציה</h3>
@@ -1795,6 +1803,38 @@ async function delEntry(id) {
   } catch(err) { setStatus('⚠ המחיקה נכשלה'); return; }
   data.entries = data.entries.filter(x => x.id !== id);
   render(); setStatus('✓ נמחק');
+  queueSync();
+}
+
+/* מחיקת שנה שלמה — שלוש שכבות הגנה: מוסתר מאחורי "אפשרויות מתקדמות",
+   הקלדת השנה, ואישור חוזר עם ספירה. tombstones כמו delEntry, אחרת
+   המחיקה לא תתפשט למכשירים אחרים בסנכרון. */
+async function wipeYear() {
+  const years = [...new Set(data.entries.map(e => String(e.date).slice(0, 4)))].sort();
+  if (!years.length) { alert('אין רשומות למחיקה.'); return; }
+  const y = prompt('מחיקת שנה שלמה — פעולה בלתי הפיכה.\nשנים קיימות: ' + years.join(', ') +
+                   '\n\nהקלד את השנה למחיקה (למשל 2024):');
+  if (y === null) return;
+  const yr = String(y).trim();
+  if (!/^\d{4}$/.test(yr) || !years.includes(yr)) { alert('לא נמחק דבר — "' + yr + '" אינה שנה עם רשומות.'); return; }
+  const es = data.entries.filter(e => String(e.date).startsWith(yr));
+  const withR = es.filter(e => e.hasReceipt).length;
+  if (!confirm('למחוק לצמיתות ' + es.length + ' רשומות של ' + yr +
+               (withR ? ' (מהן ' + withR + ' עם קבלה מצורפת)?' : '?') +
+               '\nהמחיקה תתפשט לכל המכשירים המסונכרנים.')) return;
+  if (String(prompt('אישור אחרון: הקלד שוב את השנה כדי למחוק:') || '').trim() !== yr) {
+    alert('לא נמחק דבר — האישור לא תאם.'); return;
+  }
+  const ids = new Set();
+  for (const e of es) {
+    try {
+      if (e.hasReceipt) { try { await DB.delFile(RK(e.id)); } catch (err) {} }
+      await DB.putEntry({ ...e, deleted: true, hasReceipt: false, updatedAt: Date.now() });
+      ids.add(e.id);
+    } catch (err) {}
+  }
+  data.entries = data.entries.filter(e => !ids.has(e.id));
+  render(); setStatus('🧨 נמחקו ' + ids.size + ' רשומות של ' + yr);
   queueSync();
 }
 
